@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "pu-graph"
+name = "pu-graphs"
 version = "0.1.0"
 description = ""
 authors = ["Dima <d.i.orekhov@gmail.com>"]
