@@ -1,8 +1,5 @@
-import dgl
 import torch.nn.init
-from catalyst.metrics import reciprocal_rank
 from torch import nn
-from torch.utils.data import DataLoader
 
 
 class DistMult(nn.Module):
@@ -16,7 +13,8 @@ class DistMult(nn.Module):
         # TODO: extend to multiple relations
         self.relation_vector = nn.Parameter(torch.Tensor(embedding_dim), requires_grad=True)
         # TODO: look how initialized in paper, experiment with different initializations
-        torch.nn.init.normal_(self.relation_vector)
+        # TODO: remove hard code
+        torch.nn.init.uniform_(self.relation_vector, a=-0.01, b=0.01)
 
     def forward(self, head_indices, tail_indices):
         head_embeddings = self.node_embedding(head_indices)
@@ -24,4 +22,4 @@ class DistMult(nn.Module):
         scores = torch.sum(
             head_embeddings * self.relation_vector * tail_embeddings, dim=-1
         )
-        return {"scores": scores}
+        return scores

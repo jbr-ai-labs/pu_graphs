@@ -23,8 +23,8 @@ class DglGraphDataset(Dataset):
         head_idx, tail_idx = self.edges[item]
         neg_head_idx, neg_tail_idx = self.strategy.sample(head_idx.item(), tail_idx.item())
         return {
-            "head_idx": head_idx,
-            "tail_idx": tail_idx,
-            "neg_head_idx": torch.LongTensor(neg_head_idx),
-            "neg_tail_idx": torch.LongTensor(neg_tail_idx),
+            "head_indices": head_idx,
+            "tail_indices": tail_idx,
+            "neg_head_indices": torch.tensor(neg_head_idx),
+            "neg_tail_indices": torch.tensor(neg_tail_idx),
         }

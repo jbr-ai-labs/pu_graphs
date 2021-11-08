@@ -3,7 +3,7 @@ import dgl
 import torch
 
 
-def get_split(graph: dgl.DGLGraph, split_key: str) -> ty.Tuple[dgl.DGLGraph, torch.Tensor]:
+def get_split(graph: dgl.DGLGraph, split_key: str) -> dgl.DGLGraph:
     split_mask = graph.edata[f"{split_key}_edge_mask"]
     split_edges_index = torch.nonzero(split_mask, as_tuple=False).squeeze()
 
