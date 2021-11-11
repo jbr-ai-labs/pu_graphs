@@ -9,6 +9,7 @@ python = "3.8.*"
 catalyst = "21.9.*"
 torch = "1.8.*"
 dgl = "0.6.*"
+wandb = "0.12.*"
 
 [tool.poetry.dev-dependencies]
 pytest = "6.2.*"
