@@ -4,7 +4,8 @@ seed: 19
 is_debug: True
 
 batch_size: 64
-embedding_dim: 4096
+eval_batch_size: 4
+embedding_dim: 32
 
 num_epochs: 50
 patience: 5
