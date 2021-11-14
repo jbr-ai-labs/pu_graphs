@@ -76,7 +76,7 @@ class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
 
 class MRRLinkPredictionMetric(LinkPredictionMetricAdapter):
 
-    def __init__(self, topk_args):
+    def __init__(self, topk_args=None):
         super(MRRLinkPredictionMetric, self).__init__(metric=MRRMetric(topk_args=topk_args))
 
     def _get_targets(self, targets, graph):
