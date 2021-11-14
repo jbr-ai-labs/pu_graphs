@@ -14,18 +14,22 @@ class LinkPredictionMetric(IMetric, abc.ABC):
     def __init__(self, compute_on_call: bool = True):
         super(LinkPredictionMetric, self).__init__(compute_on_call=compute_on_call)
 
+    @abc.abstractmethod
+    def update(self, head_idx, tail_idx, logits, graph) -> Any:
+        pass
+
 
 class LinkPredictionMetricAdapter(LinkPredictionMetric):
 
-    def __init__(self, metric: IMetric, compute_on_call: bool = True):
-        super(LinkPredictionMetricAdapter, self).__init__(compute_on_call=compute_on_call)
+    # noinspection PyMissingConstructor
+    def __init__(self, metric: IMetric):
         self.metric = metric
 
     def reset(self) -> None:
         self.metric.reset()
 
-    def update(self, logits, targets, graph) -> Any:
-        targets = self._get_targets(targets=targets, graph=graph)
+    def update(self, head_idx, tail_idx, logits, graph) -> Any:
+        targets = self._get_targets(targets=tail_idx, graph=graph)
         return self.metric.update(logits=logits, targets=targets)
 
     def compute(self) -> Any:
@@ -34,6 +38,40 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
     @abc.abstractmethod
     def _get_targets(self, targets, graph):
         pass
+
+    def __getattr__(self, item):
+        return getattr(self.metric, item)
+
+
+class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
+
+    # noinspection PyMissingConstructor
+    def __init__(self, metric: LinkPredictionMetric, full_adj_mat):
+        self.metric = metric
+        self.full_adj_mat = full_adj_mat
+
+    @staticmethod
+    def filter_logits(full_adj_mat, logits, head_idx, tail_idx, graph):
+        """
+        Makes logits for pairs other than (head_idx, tail_idx)
+        """
+        batch_adj_mat = torch.tensor(full_adj_mat[head_idx].todense())
+        targets = torch.nn.functional.one_hot(
+            tail_idx,
+            num_classes=full_adj_mat.shape[1]
+        )
+        mask = batch_adj_mat - targets
+        return torch.where(
+            mask.byte(),
+            torch.tensor(float("-inf")).type(logits.dtype),
+            logits
+        )
+
+    def update(self, head_idx, tail_idx, logits, graph) -> Any:
+        logits = FilteredLinkPredictionMetric.filter_logits(
+            full_adj_mat=self.full_adj_mat, logits=logits, head_idx=head_idx, tail_idx=tail_idx, graph=graph
+        )
+        return self.metric.update(logits=logits, head_idx=head_idx, tail_idx=tail_idx, graph=graph)
 
 
 class MRRLinkPredictionMetric(LinkPredictionMetricAdapter):
