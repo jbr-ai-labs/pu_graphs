@@ -118,3 +118,22 @@ def compute_score_based_metrics_for_loader(
             metrics.items()
         )
     }
+
+
+# Not used currently but may be useful later
+def optimistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
+    mask = logits > logits[target_idx]
+    ranks = mask.sum(-1) + 1
+    ranks = ranks.where(ranks < k + 1, ranks, torch.tensor(0).type(ranks.dtype))
+    return ranks
+
+
+def pessimistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
+    mask = logits >= logits[target_idx]
+    ranks = mask.sum(-1)
+    ranks = ranks.where(ranks < k - 1, ranks, torch.tensor(0).type(ranks.dtype))
+    return ranks
+
+
+def realistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
+    return (optimistic_rank(logits, target_idx, k) + pessimistic_rank(logits, target_idx, k)) / 2
