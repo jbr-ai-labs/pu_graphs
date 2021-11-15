@@ -3,6 +3,7 @@ import typing as ty
 from typing import Any
 
 import dgl
+import scipy
 import torch
 from catalyst.metrics import IMetric, MRRMetric, AccuracyMetric
 from torch.utils.data import DataLoader
@@ -29,15 +30,14 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
         self.metric.reset()
 
     def update(self, head_idx, tail_idx, logits, graph) -> Any:
-        targets = self._get_targets(targets=tail_idx, graph=graph)
+        targets = self._transform_targets(targets=tail_idx, graph=graph)
         return self.metric.update(logits=logits, targets=targets)
 
     def compute(self) -> Any:
         return self.metric.compute()
 
-    @abc.abstractmethod
-    def _get_targets(self, targets, graph):
-        pass
+    def _transform_targets(self, targets, graph):
+        return targets
 
     def __getattr__(self, item):
         return getattr(self.metric, item)
@@ -46,7 +46,7 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
 class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
 
     # noinspection PyMissingConstructor
-    def __init__(self, metric: LinkPredictionMetric, full_adj_mat):
+    def __init__(self, metric: LinkPredictionMetric, full_adj_mat: scipy.sparse.csr.csr_matrix):
         self.metric = metric
         self.full_adj_mat = full_adj_mat
 
@@ -79,17 +79,14 @@ class MRRLinkPredictionMetric(LinkPredictionMetricAdapter):
     def __init__(self, topk_args=None):
         super(MRRLinkPredictionMetric, self).__init__(metric=MRRMetric(topk_args=topk_args))
 
-    def _get_targets(self, targets, graph):
+    def _transform_targets(self, targets, graph):
         return torch.nn.functional.one_hot(targets, num_classes=graph.number_of_nodes())
 
 
-class AccuracyLinPredictionMetric(LinkPredictionMetricAdapter):
+class AccuracyLinkPredictionMetric(LinkPredictionMetricAdapter):
 
     def __init__(self, topk_args):
-        super(AccuracyLinPredictionMetric, self).__init__(metric=AccuracyMetric(topk_args=topk_args))
-
-    def _get_targets(self, targets, graph):
-        return targets
+        super(AccuracyLinkPredictionMetric, self).__init__(metric=AccuracyMetric(topk_args=topk_args))
 
 
 @torch.no_grad()

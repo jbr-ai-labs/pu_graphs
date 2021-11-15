@@ -1,1 +1,1 @@
-from .evaluation import MRRLinkPredictionMetric, AccuracyLinPredictionMetric, FilteredLinkPredictionMetric
+from .evaluation import MRRLinkPredictionMetric, AccuracyLinkPredictionMetric, FilteredLinkPredictionMetric
