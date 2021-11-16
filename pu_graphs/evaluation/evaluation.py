@@ -1,19 +1,17 @@
 import abc
 import typing as ty
-from typing import Any
+from typing import Any, Dict
 
 import dgl
 import scipy
 import torch
-from catalyst.metrics import IMetric, MRRMetric, AccuracyMetric
+from catalyst.metrics import IMetric, MRRMetric, AccuracyMetric, AdditiveMetric, ICallbackBatchMetric, \
+    process_recsys_components
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
 class LinkPredictionMetric(IMetric, abc.ABC):
-
-    def __init__(self, compute_on_call: bool = True):
-        super(LinkPredictionMetric, self).__init__(compute_on_call=compute_on_call)
 
     @abc.abstractmethod
     def update(self, head_idx, tail_idx, logits, graph) -> Any:
@@ -29,6 +27,8 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
     def reset(self) -> None:
         self.metric.reset()
 
+    # FIXME: probably you don't need graph parameter since you use only to infer number of nodes,
+    # this info is already contained in logits
     def update(self, head_idx, tail_idx, logits, graph) -> Any:
         targets = self._transform_targets(targets=tail_idx, graph=graph)
         return self.metric.update(logits=logits, targets=targets)
@@ -124,16 +124,57 @@ def compute_score_based_metrics_for_loader(
 def optimistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
     mask = logits > logits[target_idx]
     ranks = mask.sum(-1) + 1
-    ranks = ranks.where(ranks < k + 1, ranks, torch.tensor(0).type(ranks.dtype))
+    ranks = ranks.where(
+        ranks < k + 1,  # ranks - 1 < k, since we want not more than k elements before us
+        ranks, torch.tensor(0).type(ranks.dtype)
+    )
     return ranks
 
 
 def pessimistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
     mask = logits >= logits[target_idx]
     ranks = mask.sum(-1)
-    ranks = ranks.where(ranks < k - 1, ranks, torch.tensor(0).type(ranks.dtype))
+    ranks = ranks.where(ranks <= k, ranks, torch.tensor(0).type(ranks.dtype))
     return ranks
 
 
 def realistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
     return (optimistic_rank(logits, target_idx, k) + pessimistic_rank(logits, target_idx, k)) / 2
+
+
+# this one is used by catalyst metrics
+def non_deterministic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
+    targets = torch.nn.functional.one_hot(target_idx, num_classes=logits.shape[-1])
+    sorted_targets = process_recsys_components(outputs=logits, targets=targets)[:, :k]
+
+
+class AdjustedMeanRankIndex(LinkPredictionMetric, ICallbackBatchMetric):
+
+    def __init__(self,
+        topk_args: ty.List[int] = None,
+        compute_on_call: bool = True,
+        prefix: str = None,
+        suffix: str = None
+    ):
+        ICallbackBatchMetric.__init__(self, compute_on_call=compute_on_call, prefix=prefix, suffix=suffix)
+        self.metric_name_mean = f"{self.prefix}mrr{self.suffix}"
+        self.metric_name_std = f"{self.prefix}mrr{self.suffix}/std"
+        self.topk_args: ty.List[int] = topk_args or [1]
+        self.additive_metrics: ty.List[AdditiveMetric] = [
+            AdditiveMetric() for _ in range(len(self.topk_args))
+        ]
+
+    def update(self, head_idx, tail_idx, logits, graph) -> Any:
+        pass
+
+    def reset(self) -> None:
+        pass
+
+    def compute(self) -> Any:
+        pass
+
+    def update_key_value(self, *args, **kwargs) -> Dict[str, float]:
+        pass
+
+    def compute_key_value(self) -> Dict[str, float]:
+        pass
