@@ -47,12 +47,6 @@ def parametrize_with_dict(dict: ty.OrderedDict):
 class TestMetrics:
 
     @staticmethod
-    def _get_graph_stub(mocker, n_nodes):
-        stub = mocker.Mock()
-        stub.configure_mock(**{"number_of_nodes.return_value": n_nodes})
-        return stub
-
-    @staticmethod
     def _get_rank(scores: ty.List[int], position: int):
         argsorted_scores = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
         return argsorted_scores.index(position) + 1
@@ -89,11 +83,11 @@ class TestMetrics:
     def _get_actual_mrr(actual_ranks: ty.List[int]):
         return sum(map(lambda r: 1 / r, actual_ranks)) / len(actual_ranks)
 
-    def test_mrr(self, n_nodes, head_idx, tail_idx, logits, mocker):
+    def test_mrr(self, n_nodes, head_idx, tail_idx, logits):
         mrr = MRRLinkPredictionMetric(topk_args=[1, n_nodes])
 
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits, graph=TestMetrics._get_graph_stub(mocker, n_nodes)
+            head_idx=head_idx, tail_idx=tail_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
@@ -104,14 +98,14 @@ class TestMetrics:
         assert result[f"mrr{n_nodes:02d}"] == pytest.approx(actual_mrr)
 
     @pytest.mark.parametrize("full_adj_mat", [FULL_ADJ_MAT])
-    def test_mrr_filtered(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat, mocker):
+    def test_mrr_filtered(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat):
         mrr = FilteredLinkPredictionMetric(
             MRRLinkPredictionMetric(topk_args=[1, n_nodes]),
             full_adj_mat=full_adj_mat
         )
 
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits, graph=TestMetrics._get_graph_stub(mocker, n_nodes)
+            head_idx=head_idx, tail_idx=tail_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
@@ -124,7 +118,7 @@ class TestMetrics:
         assert result[f"mrr{n_nodes:02d}"] == pytest.approx(actual_mrr)
 
     @pytest.mark.parametrize("full_adj_mat", [FULL_ADJ_MAT])
-    def test_filtered_metric_is_greater_or_equal(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat, mocker):
+    def test_filtered_metric_is_greater_or_equal(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat):
         topk_args = [1, n_nodes]
         mrr = MRRLinkPredictionMetric(topk_args=topk_args)
         filtered_mrr = FilteredLinkPredictionMetric(
@@ -132,12 +126,11 @@ class TestMetrics:
             full_adj_mat=full_adj_mat
         )
 
-        graph_stub = TestMetrics._get_graph_stub(mocker, n_nodes)
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits, graph=graph_stub
+            head_idx=head_idx, tail_idx=tail_idx, logits=logits
         )
         filtered_mrr(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits, graph=graph_stub
+            head_idx=head_idx, tail_idx=tail_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
