@@ -188,7 +188,7 @@ class AdjustedMeanRankIndex(LinkPredictionMetric, ICallbackBatchMetric):
             ranks = rank_fn(logits=logits, target_idx=tail_idx, k=k)
             n_tails = logits.shape[-1]
             ranks[ranks == 0] = n_tails
-            value = (2 / n_tails) * ranks.sub(1).sum()
+            value = (2 / n_tails) * ranks.sub(1).float().mean()
             return value
         return metric_fn
 
