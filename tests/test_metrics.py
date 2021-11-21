@@ -10,6 +10,8 @@ from pu_graphs.evaluation import MRRLinkPredictionMetric, FilteredLinkPrediction
 
 
 # TODO: think about generating input data
+from pu_graphs.evaluation.evaluation import AdjustedMeanRankIndex
+
 TEST_METRIC_DATA = OrderedDict([
     ("n_nodes", 5),
     ("head_idx", torch.tensor([1, 2, 3, 4])),
@@ -143,3 +145,27 @@ class TestMetrics:
             assert filtered_value > value
 
     # TODO: add tests for metrics other than MRR
+
+    def test_amri(self, n_nodes, head_idx, tail_idx, logits):
+        amri = AdjustedMeanRankIndex(topk_args=[n_nodes])
+
+        amri.update(
+            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+        )
+
+        r = amri.compute_key_value()
+        assert r["amri"] == pytest.approx(0.25)
+
+    def test_amri_batched(self, n_nodes, head_idx, tail_idx, logits):
+        amri = AdjustedMeanRankIndex(topk_args=[n_nodes])
+
+        split = 2
+        amri.update(
+            head_idx=head_idx[:split], tail_idx=tail_idx[:split], logits=logits[:split]
+        )
+        amri.update(
+            head_idx=head_idx[split:], tail_idx=tail_idx[split:], logits=logits[split:]
+        )
+
+        r = amri.compute_key_value()
+        assert r["amri"] == pytest.approx(0.25)
