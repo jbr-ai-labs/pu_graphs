@@ -27,8 +27,6 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
     def reset(self) -> None:
         self.metric.reset()
 
-    # FIXME: probably you don't need graph parameter since you use only to infer number of nodes,
-    # this info is already contained in logits
     def update(self, head_idx, tail_idx, logits) -> Any:
         targets = self._transform_targets(head_idx=head_idx, tail_idx=tail_idx, logits=logits)
         return self.metric.update(logits=logits, targets=targets)
@@ -110,7 +108,7 @@ def compute_score_based_metrics_for_loader(
         logits = model(head_indices=expanded_head_idx, tail_indices=expanded_all_tail_idx)
 
         for metric in metrics.values():
-            metric.update(logits=logits, targets=tail_idx, graph=graph)
+            metric.update(head_idx=head_idx, tail_idx=tail_idx, logits=logits)
 
     return {
         k: {"mean": mean, "std": std}
@@ -188,7 +186,7 @@ class AdjustedMeanRankIndex(LinkPredictionMetric, ICallbackBatchMetric):
             ranks = rank_fn(logits=logits, target_idx=tail_idx, k=k)
             n_tails = logits.shape[-1]
             ranks[ranks == 0] = n_tails
-            value = (2 / n_tails) * ranks.sub(1).float().mean()
+            value = 1 - (2 / (n_tails - 1)) * ranks.sub(1).float().mean()
             return value
         return metric_fn
 
