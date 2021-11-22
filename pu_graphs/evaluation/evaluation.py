@@ -119,6 +119,44 @@ def compute_score_based_metrics_for_loader(
     }
 
 
+@torch.no_grad()
+def compute_score_based_metrics_for_loader_optimized(
+    graph: dgl.DGLGraph,
+    model,
+    loader: DataLoader,
+    metrics: ty.Dict[str, LinkPredictionMetric]
+):
+    number_of_nodes = graph.number_of_nodes()
+    all_tail_idx = torch.arange(0, number_of_nodes)
+    scores = torch.empty(number_of_nodes, number_of_nodes)
+    batch_size = loader.batch_size
+    for i in tqdm(range(0, number_of_nodes, batch_size)):
+        head_idx = torch.arange(i, i + batch_size)
+        expanded_head_idx = head_idx.unsqueeze(-1).expand([-1, len(all_tail_idx)])
+
+        actual_batch_size = head_idx.shape[0]
+        expanded_all_tail_idx = all_tail_idx.expand([actual_batch_size, -1])
+
+        logits = model(head_indices=expanded_head_idx, tail_indices=expanded_all_tail_idx)
+        scores[i:i+batch_size] = logits
+
+    for batch in tqdm(loader):
+        head_idx, tail_idx = batch["head_indices"], batch["tail_indices"]
+
+        logits = scores[head_idx, tail_idx]
+
+        for metric in metrics.values():
+            metric.update(head_idx=head_idx, tail_idx=tail_idx, logits=logits)
+
+    return {
+        k: {"mean": mean, "std": std}
+        for k, (mean, std) in map(
+            lambda item: (item[0], item[1].compute()),
+            metrics.items()
+        )
+    }
+
+
 # Not used currently but may be useful later
 def optimistic_rank(logits: torch.Tensor, target_idx: torch.Tensor, k: int):
     mask = logits > logits[target_idx]
