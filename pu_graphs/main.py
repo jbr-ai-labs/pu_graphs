@@ -16,6 +16,7 @@ from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.data.utils import get_split
 from pu_graphs.debug_utils import DebugDataset
+from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import compute_score_based_metrics_for_loader, MRRLinkPredictionMetric, \
     AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, compute_score_based_metrics_for_loader_optimized
 from pu_graphs.modeling.dist_mult import DistMult
@@ -24,9 +25,10 @@ from pu_graphs.modeling.loss import UnbiasedPULoss, sigmoid_loss, logistic_loss
 
 def main():
     config = load_config("config.yaml")  # FIXME: replace hardcode
+    is_debug = config["is_debug"]
 
-    #if config["is_debug"]:
-    #    os.environ["WANDB_MODE"] = "dryrun"
+    if is_debug:
+        os.environ["WANDB_MODE"] = "dryrun"
 
     set_global_seed(config["seed"])
 
@@ -45,7 +47,7 @@ def main():
         for split_key, graph in graphs.items()
     }
 
-    if config["is_debug"]:
+    if is_debug:
         datasets = {k: DebugDataset(v, n_examples=100) for k, v in datasets.items()}
 
     loaders = {
@@ -80,26 +82,6 @@ def main():
         batch.update(new_fields)
         return batch
 
-
-    class EvaluationCallback(dl.Callback):
-        def __init__(self, loader_key: str):
-            self.loader_key = loader_key
-            super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.ExternalExtra, node=dl.CallbackNode.Master)
-
-        def on_experiment_end(self, runner: "IRunner") -> None:
-            metrics = {"mrr": 10.0}
-
-            kwargs = deepcopy(runner._log_defaults)
-            kwargs.update({
-                "metrics": metrics,
-                "scope": "loader",
-                "loader_key": self.loader_key
-            })
-
-            for logger in runner.loggers.values():
-                logger.log_metrics(**kwargs)
-
-
     logdir = Path("./logdir") / config["run_name"]
     callbacks = [
         dl.BatchTransformCallback(
@@ -119,8 +101,18 @@ def main():
             minimize=True,
             load_on_stage_end="best"
         ),
-        EvaluationCallback("test")
-    ]  # TODO: init
+        EvaluationCallback(
+            graph=graphs["test"],
+            metrics={
+                "mrr": MRRLinkPredictionMetric(topk_args=[full_graph.number_of_nodes()]),
+                "acc": AccuracyLinkPredictionMetric(topk_args=[1, 3, 5, 10, 20]),
+                "amri": AdjustedMeanRankIndex(topk_args=[full_graph.number_of_nodes()])
+            },
+            loader=loaders["test"],
+            loader_key="test",
+            is_debug=is_debug
+        )
+    ]
 
     loggers = {
         "wandb": dl.WandbLogger(project="pu_graphs", name=config["run_name"])
@@ -143,25 +135,11 @@ def main():
         verbose=True,
         logdir=logdir,
         num_epochs=config["num_epochs"],
-        check=config["is_debug"],
+        check=is_debug,
         load_best_on_end=True,
         hparams=config,
         loggers=loggers
     )
-
-    # TODO: move inside runner
-    #for split_key in ("valid", "test"):
-    #    metrics = compute_score_based_metrics_for_loader_optimized(
-    #        graph=graphs[split_key],
-    #        model=model,
-    #        loader=loaders[split_key],
-    #        metrics={
-    #            "mrr": MRRLinkPredictionMetric(topk_args=[full_graph.number_of_nodes()]),
-    #            "acc": AccuracyLinkPredictionMetric(topk_args=[1, 3, 5, 10, 20]),
-    #            "amri": AdjustedMeanRankIndex(topk_args=[full_graph.number_of_nodes()])
-    #        }
-    #    )
-    #    print(split_key, metrics)
 
 
 if __name__ == '__main__':
