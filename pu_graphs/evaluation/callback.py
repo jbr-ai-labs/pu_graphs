@@ -42,7 +42,7 @@ class EvaluationCallback(dl.Callback):
         for i in tqdm(range(0, number_of_nodes, batch_size), desc="Computing scores"):
             to = min(i + batch_size, number_of_nodes)
             head_idx = torch.arange(i, to)
-            expanded_head_idx = head_idx.unsqueeze(-1).expand([-1, len(all_tail_idx)])
+            expanded_head_idx = head_idx.unsqueeze(-1).expand([-1, len(all_tail_idx)]).to(torch.device(runner.device))
 
             actual_batch_size = head_idx.shape[0]
             expanded_all_tail_idx = all_tail_idx.expand([actual_batch_size, -1])
