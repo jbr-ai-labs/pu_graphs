@@ -35,7 +35,7 @@ class EvaluationCallback(dl.Callback):
         model.eval()
 
         number_of_nodes = self.graph.number_of_nodes()
-        all_tail_idx = torch.arange(0, number_of_nodes)
+        all_tail_idx = torch.arange(0, number_of_nodes).to(torch.device(runner.device))
         self.scores = torch.empty(number_of_nodes, number_of_nodes)
         batch_size = self.loader.batch_size
 
