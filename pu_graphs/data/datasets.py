@@ -14,17 +14,20 @@ class DglGraphDataset(Dataset):
     def __init__(self, graph: dgl.DGLGraph, strategy: SamplingStrategy):
         self.graph = graph
         self.strategy = strategy
-        self.edges: ty.List[ty.Tuple[LongTensor, LongTensor]] = list(zip(*self.graph.edges()))
+        self.edges: ty.List[ty.Tuple[LongTensor, LongTensor, LongTensor]] = list(zip(
+            *(*self.graph.edges(), self.graph.edata["etype"])
+        ))
 
     def __len__(self) -> int:
         return len(self.edges)
 
     def __getitem__(self, item: int) -> ty.Dict[str, LongTensor]:
-        head_idx, tail_idx = self.edges[item]
+        head_idx, tail_idx, relation_idx = self.edges[item]
         neg_head_idx, neg_tail_idx = self.strategy.sample(head_idx.item(), tail_idx.item())
         return {
             "head_indices": head_idx,
             "tail_indices": tail_idx,
+            "relation_indices": relation_idx,
             "neg_head_indices": torch.tensor(neg_head_idx),
             "neg_tail_indices": torch.tensor(neg_tail_idx),
         }

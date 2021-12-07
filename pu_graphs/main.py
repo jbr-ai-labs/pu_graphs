@@ -66,6 +66,7 @@ def main():
     # We assume that each node in present in every graph: train, valid, test
     model = DistMult(
         n_nodes=full_graph.number_of_nodes(),
+        n_relations=graphs["train"].edata["etype"].max().item(),
         embedding_dim=config["embedding_dim"]
     )
     optimizer = torch.optim.Adam(model.parameters())
@@ -77,6 +78,7 @@ def main():
         new_fields = {
             "head_indices": torch.cat([batch["head_indices"], batch["neg_head_indices"]]),
             "tail_indices": torch.cat([batch["tail_indices"], batch["neg_tail_indices"]]),
+            "relation_indices": batch["relation_indices"].expand([2, -1]).flatten(),
             "labels": torch.cat([torch.ones(n_positives), torch.zeros(n_unlabeled)]),
         }
         batch.update(new_fields)
@@ -119,7 +121,7 @@ def main():
     }
 
     runner = dl.SupervisedRunner(
-        input_key=["head_indices", "tail_indices"],
+        input_key=["head_indices", "tail_indices", "relation_indices"],
         output_key="logits",
         target_key="labels",
         loss_key="loss"
