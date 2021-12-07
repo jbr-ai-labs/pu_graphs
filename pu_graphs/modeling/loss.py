@@ -17,7 +17,7 @@ class UnbiasedPULoss(nn.Module):
         positive_loss = self.pi * self.surrogate_loss(positive_logits).mean()
         negative_loss = (
             self.surrogate_loss(-unlabeled_logits).mean()
-            - self.pi * self.surrogate_loss(-positive_loss).mean()
+            - self.pi * self.surrogate_loss(-positive_logits).mean()
         )
         loss = positive_loss + (
             negative_loss.maximum(torch.tensor(0))
