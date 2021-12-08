@@ -29,44 +29,36 @@ class EvaluationCallback(dl.Callback):
         self.was_called = False  # FIXME: some internal catalyst problems
         super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.ExternalExtra, node=dl.CallbackNode.Master)
 
-    @torch.no_grad()
-    def _compute_scores(self, runner: dl.IRunner):
+    def _compute_score(self, runner, head_idx, relation_idx):
         model = runner.model
         model.eval()
 
+        batch_size = head_idx.shape[0]
+
         number_of_nodes = self.graph.number_of_nodes()
-        number_of_relations = self.graph.edata["etype"].max().item() + 1
-
         all_tail_idx = torch.arange(0, number_of_nodes).to(torch.device(runner.device))
-        self.scores = torch.empty(number_of_relations, number_of_nodes, number_of_nodes)
-        batch_size = self.loader.batch_size
 
-        if self.is_debug:
-            return
+        # shape: [batch_size, 1]
+        expanded_head_idx = head_idx.unsqueeze(-1).to(torch.device(runner.device))
+        # shape: [batch_size, number_of_nodes]
+        expanded_all_tail_idx = all_tail_idx.expand([batch_size, -1])
+        # shape: [batch_size, 1]:
+        expanded_relation_idx = relation_idx.unsqueeze(-1)
 
-        for i in tqdm(range(0, number_of_nodes, batch_size), desc="Computing scores"):
-            to = min(i + batch_size, number_of_nodes)
-            head_idx = torch.arange(i, to)
-            expanded_head_idx = head_idx.unsqueeze(-1).expand([-1, len(all_tail_idx)]).to(torch.device(runner.device))
-
-            actual_batch_size = head_idx.shape[0]
-            expanded_all_tail_idx = all_tail_idx.expand([actual_batch_size, -1])
-
-            for j in range(number_of_relations):
-                relation_indices = torch.full_like(expanded_head_idx, j)
-                logits = model(
-                    head_indices=expanded_head_idx,
-                    tail_indices=expanded_all_tail_idx,
-                    relation_indices=relation_indices
-                )
-                self.scores[j, i:to] = logits
+        # shape: [batch_size, number_of_nodes]
+        logits = model(
+            head_indices=expanded_head_idx,
+            tail_indices=expanded_all_tail_idx,
+            relation_indices=expanded_relation_idx
+        )
+        return logits
 
     @torch.no_grad()
-    def _compute_metrics(self):
+    def _compute_metrics(self, runner):
         for batch in tqdm(self.loader, desc="Computing metrics"):
             head_idx, tail_idx, relation_idx = batch["head_indices"], batch["tail_indices"], batch["relation_indices"]
 
-            logits = self.scores[relation_idx, head_idx]
+            logits = self._compute_score(runner, head_idx=head_idx, relation_idx=relation_idx)
 
             for metric in self.metrics.values():
                 metric.update(head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits)
@@ -83,10 +75,7 @@ class EvaluationCallback(dl.Callback):
         else:
             self.was_called = True
 
-        self._compute_scores(runner)
-        print("SCORES COMPUTED")
-        metrics = flatten_dict(self._compute_metrics())
-        print("METRICS: ", metrics)
+        metrics = flatten_dict(self._compute_metrics(runner))
 
         kwargs = deepcopy(runner._log_defaults)
         kwargs.update({
