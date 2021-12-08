@@ -5,6 +5,7 @@ import dgl
 import torch
 from catalyst import dl
 from catalyst.utils.misc import flatten_dict
+from catalyst.utils.torch import any2device
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -39,11 +40,11 @@ class EvaluationCallback(dl.Callback):
         all_tail_idx = torch.arange(0, number_of_nodes).to(torch.device(runner.device))
 
         # shape: [batch_size, 1]
-        expanded_head_idx = head_idx.unsqueeze(-1).to(torch.device(runner.device))
+        expanded_head_idx = head_idx.unsqueeze(-1)
         # shape: [batch_size, number_of_nodes]
         expanded_all_tail_idx = all_tail_idx.expand([batch_size, -1])
         # shape: [batch_size, 1]:
-        expanded_relation_idx = relation_idx.unsqueeze(-1).to(torch.device(runner.device))
+        expanded_relation_idx = relation_idx.unsqueeze(-1)
 
         # shape: [batch_size, number_of_nodes]
         logits = model(
@@ -56,7 +57,10 @@ class EvaluationCallback(dl.Callback):
     @torch.no_grad()
     def _compute_metrics(self, runner):
         for batch in tqdm(self.loader, desc="Computing metrics"):
-            head_idx, tail_idx, relation_idx = batch["head_indices"], batch["tail_indices"], batch["relation_indices"]
+            head_idx, tail_idx, relation_idx = any2device(
+                [batch["head_indices"], batch["tail_indices"], batch["relation_indices"]],
+                device=runner.device
+            )
 
             logits = self._compute_score(runner, head_idx=head_idx, relation_idx=relation_idx)
 
