@@ -51,7 +51,7 @@ class EvaluationCallback(dl.Callback):
             tail_indices=expanded_all_tail_idx,
             relation_indices=expanded_relation_idx
         )
-        return logits
+        return logits.to(torch.device("cpu"))
 
     @torch.no_grad()
     def _compute_metrics(self, runner):
