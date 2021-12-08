@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import dgl
+import hydra_slayer
 import numpy as np
 import sparse
 import torch
@@ -59,7 +60,9 @@ def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
 
 
 def main():
-    config = load_config("config.yaml")  # FIXME: replace hardcode
+    config = hydra_slayer.get_from_params(
+        **load_config("config.yaml")  # FIXME: replace hardcode
+    )
     is_debug = config["is_debug"]
 
     if is_debug:
@@ -104,7 +107,7 @@ def main():
         n_relations=graphs["train"].edata["etype"].max().item() + 1,
         embedding_dim=config["embedding_dim"]
     )
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = config["optimizer"](model.parameters())
     criterion = UnbiasedPULoss(logistic_loss, pi=0.5)  # FIXME: estimate pi somehow
 
     def transform_as_pos_neg(batch):

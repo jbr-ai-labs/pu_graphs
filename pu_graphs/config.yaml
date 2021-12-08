@@ -3,9 +3,15 @@ run_name: dist-mult
 seed: 19
 is_debug: True
 
+optimizer:
+  _target_: torch.optim.Adam
+  _mode_: partial
+  lr: 0.0001
+
 batch_size: 64
 eval_batch_size: 4
-embedding_dim: 32
+embedding_dim: 4
 
 num_epochs: 50
 patience: 5
+
