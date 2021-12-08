@@ -11,7 +11,9 @@ class DistMult(nn.Module):
         self.embedding_dim = embedding_dim
         # TODO: add option to work with graphs, where heads and tail are different kind of entities
         self.node_embedding = nn.Embedding(num_embeddings=n_nodes, embedding_dim=embedding_dim)
+        torch.nn.init.xavier_uniform_(self.node_embedding.weight)
         self.relation_embedding = nn.Embedding(num_embeddings=n_relations, embedding_dim=embedding_dim)
+        torch.nn.init.xavier_uniform_(self.relation_embedding.weight)
 
     def forward(self, head_indices, tail_indices, relation_indices):
         head_embeddings = self.node_embedding(head_indices)
