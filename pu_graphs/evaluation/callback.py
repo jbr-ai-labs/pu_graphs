@@ -43,7 +43,7 @@ class EvaluationCallback(dl.Callback):
         # shape: [batch_size, number_of_nodes]
         expanded_all_tail_idx = all_tail_idx.expand([batch_size, -1])
         # shape: [batch_size, 1]:
-        expanded_relation_idx = relation_idx.unsqueeze(-1)
+        expanded_relation_idx = relation_idx.unsqueeze(-1).to(torch.device(runner.device))
 
         # shape: [batch_size, number_of_nodes]
         logits = model(
