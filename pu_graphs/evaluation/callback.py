@@ -35,9 +35,14 @@ class EvaluationCallback(dl.Callback):
         model.eval()
 
         number_of_nodes = self.graph.number_of_nodes()
+        number_of_relations = self.graph.edata["etype"].max().item() + 1
+
         all_tail_idx = torch.arange(0, number_of_nodes).to(torch.device(runner.device))
-        self.scores = torch.empty(number_of_nodes, number_of_nodes)
+        self.scores = torch.empty(number_of_relations, number_of_nodes, number_of_nodes)
         batch_size = self.loader.batch_size
+
+        if self.is_debug:
+            return
 
         for i in tqdm(range(0, number_of_nodes, batch_size), desc="Computing scores"):
             to = min(i + batch_size, number_of_nodes)
@@ -47,18 +52,24 @@ class EvaluationCallback(dl.Callback):
             actual_batch_size = head_idx.shape[0]
             expanded_all_tail_idx = all_tail_idx.expand([actual_batch_size, -1])
 
-            logits = model(head_indices=expanded_head_idx, tail_indices=expanded_all_tail_idx)
-            self.scores[i:to] = logits
+            for j in range(number_of_relations):
+                relation_indices = torch.full_like(expanded_head_idx, j)
+                logits = model(
+                    head_indices=expanded_head_idx,
+                    tail_indices=expanded_all_tail_idx,
+                    relation_indices=relation_indices
+                )
+                self.scores[j, i:to] = logits
 
     @torch.no_grad()
     def _compute_metrics(self):
         for batch in tqdm(self.loader, desc="Computing metrics"):
-            head_idx, tail_idx = batch["head_indices"], batch["tail_indices"]
+            head_idx, tail_idx, relation_idx = batch["head_indices"], batch["tail_indices"], batch["relation_indices"]
 
-            logits = self.scores[head_idx]
+            logits = self.scores[relation_idx, head_idx]
 
             for metric in self.metrics.values():
-                metric.update(head_idx=head_idx, tail_idx=tail_idx, logits=logits)
+                metric.update(head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits)
 
         return {
             k: v

@@ -5,7 +5,7 @@ from typing import Any, Dict
 import dgl
 import scipy
 import torch
-from catalyst.metrics import IMetric, MRRMetric, AccuracyMetric, AdditiveMetric, ICallbackBatchMetric, \
+from catalyst.metrics import IMetric, MRRMetric, AccuracyMetric, ICallbackBatchMetric, \
     process_recsys_components, FunctionalBatchMetric
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -14,7 +14,7 @@ from tqdm import tqdm
 class LinkPredictionMetric(IMetric, abc.ABC):
 
     @abc.abstractmethod
-    def update(self, head_idx, tail_idx, logits) -> Any:
+    def update(self, head_idx, tail_idx, relation_idx, logits) -> Any:
         pass
 
 
@@ -27,14 +27,16 @@ class LinkPredictionMetricAdapter(LinkPredictionMetric):
     def reset(self) -> None:
         self.metric.reset()
 
-    def update(self, head_idx, tail_idx, logits) -> Any:
-        targets = self._transform_targets(head_idx=head_idx, tail_idx=tail_idx, logits=logits)
+    def update(self, head_idx, tail_idx, relation_idx, logits) -> Any:
+        targets = self._transform_targets(
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
+        )
         return self.metric.update(logits=logits, targets=targets)
 
     def compute(self) -> Any:
         return self.metric.compute()
 
-    def _transform_targets(self, head_idx, tail_idx, logits):
+    def _transform_targets(self, head_idx, tail_idx, relation_idx, logits):
         return tail_idx
 
     def __getattr__(self, item):
@@ -49,11 +51,11 @@ class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
         self.full_adj_mat = full_adj_mat
 
     @staticmethod
-    def filter_logits(full_adj_mat, logits, head_idx, tail_idx):
+    def filter_logits(full_adj_mat, logits, head_idx, tail_idx, relation_idx):
         """
         Makes logits for pairs other than (head_idx, tail_idx)
         """
-        batch_adj_mat = torch.tensor(full_adj_mat[head_idx].todense())
+        batch_adj_mat = torch.tensor(full_adj_mat[relation_idx, head_idx].todense())
         targets = torch.nn.functional.one_hot(
             tail_idx,
             num_classes=full_adj_mat.shape[1]
@@ -65,27 +67,31 @@ class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
             logits
         )
 
-    def update(self, head_idx, tail_idx, logits) -> Any:
+    def update(self, head_idx, tail_idx, relation_idx, logits) -> Any:
         logits = FilteredLinkPredictionMetric.filter_logits(
-            full_adj_mat=self.full_adj_mat, logits=logits, head_idx=head_idx, tail_idx=tail_idx
+            full_adj_mat=self.full_adj_mat,
+            logits=logits,
+            head_idx=head_idx,
+            tail_idx=tail_idx,
+            relation_idx=relation_idx
         )
-        return self.metric.update(logits=logits, head_idx=head_idx, tail_idx=tail_idx)
+        return self.metric.update(logits=logits, head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx)
 
 
 class MRRLinkPredictionMetric(LinkPredictionMetricAdapter):
 
-    def __init__(self, topk_args=None):
-        super(MRRLinkPredictionMetric, self).__init__(metric=MRRMetric(topk_args=topk_args))
+    def __init__(self, topk_args=None, suffix: str = ""):
+        super(MRRLinkPredictionMetric, self).__init__(metric=MRRMetric(topk_args=topk_args, suffix=suffix))
 
-    def _transform_targets(self, head_idx, tail_idx, logits):
+    def _transform_targets(self, head_idx, tail_idx, relation_idx, logits):
         number_of_nodes = logits.shape[-1]
         return torch.nn.functional.one_hot(tail_idx, num_classes=number_of_nodes)
 
 
 class AccuracyLinkPredictionMetric(LinkPredictionMetricAdapter):
 
-    def __init__(self, topk_args):
-        super(AccuracyLinkPredictionMetric, self).__init__(metric=AccuracyMetric(topk_args=topk_args))
+    def __init__(self, topk_args, suffix: str = ""):
+        super(AccuracyLinkPredictionMetric, self).__init__(metric=AccuracyMetric(topk_args=topk_args, suffix=suffix))
 
 
 @torch.no_grad()
@@ -228,7 +234,7 @@ class AdjustedMeanRankIndex(LinkPredictionMetric, ICallbackBatchMetric):
             return value
         return metric_fn
 
-    def update(self, head_idx, tail_idx, logits) -> Any:
+    def update(self, head_idx, tail_idx, relation_idx, logits) -> Any:
         return [
             m.update(
                 batch_size=logits.shape[0],
