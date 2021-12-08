@@ -87,6 +87,16 @@ class MRRLinkPredictionMetric(LinkPredictionMetricAdapter):
         number_of_nodes = logits.shape[-1]
         return torch.nn.functional.one_hot(tail_idx, num_classes=number_of_nodes)
 
+    def compute_key_value(self):
+        result = self.metric.compute_key_value()
+        metric = self.metric
+        key = f"{metric.prefix}{metric.metric_name}{metric.suffix}"
+        if key not in result:
+            max_k = max(metric.topk_args)
+            max_k_key = f"{metric.prefix}{metric.metric_name}{max_k:02d}{metric.suffix}"
+            result[key] = result[max_k_key]
+        return result
+
 
 class AccuracyLinkPredictionMetric(LinkPredictionMetricAdapter):
 
