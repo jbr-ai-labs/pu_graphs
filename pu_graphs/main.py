@@ -19,6 +19,7 @@ from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
     AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, FilteredLinkPredictionMetric
 from pu_graphs.modeling.dist_mult import DistMult
+from pu_graphs.modeling.transD import TransD
 from pu_graphs.modeling.loss import UnbiasedPULoss, logistic_loss
 
 
@@ -102,11 +103,19 @@ def main():
     }
 
     # We assume that each node in present in every graph: train, valid, test
-    model = DistMult(
-        n_nodes=full_graph.number_of_nodes(),
-        n_relations=graphs["train"].edata["etype"].max().item() + 1,
-        embedding_dim=config["embedding_dim"]
-    )
+    if config["model"] == 'dist-mult':
+        model = DistMult(
+            n_nodes=full_graph.number_of_nodes(),
+            n_relations=graphs["train"].edata["etype"].max().item() + 1,
+            embedding_dim=config["embedding_dim"]
+        )
+    elif config["model"] == 'transd':
+            model = TransD(
+                n_nodes=full_graph.number_of_nodes(),
+                n_relations=graphs["train"].edata["etype"].max().item() + 1,
+                entities_embedding_dim=config["ent_embedding_dim"],
+                relation_embedding_dim=config["rel_embedding_dim"]
+            )
     optimizer = config["optimizer"](model.parameters())
     criterion = UnbiasedPULoss(logistic_loss, pi=0.5)  # FIXME: estimate pi somehow
 

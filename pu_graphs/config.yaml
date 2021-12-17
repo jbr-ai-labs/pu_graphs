@@ -1,5 +1,6 @@
 run_name: dist-mult
 
+model: dist-mult
 seed: 19
 is_debug: True
 
@@ -11,6 +12,8 @@ optimizer:
 batch_size: 64
 eval_batch_size: 4
 embedding_dim: 4
+ent_embedding_dim: 50
+rel_embedding_dim: 50
 
 num_epochs: 50
 patience: 5
