@@ -2,13 +2,12 @@ import typing as ty
 from collections import OrderedDict
 from copy import copy
 
+import numpy as np
 import pytest
-import scipy.sparse
+import sparse
 import torch
 
 from pu_graphs.evaluation import MRRLinkPredictionMetric, FilteredLinkPredictionMetric
-
-
 # TODO: think about generating input data
 from pu_graphs.evaluation.evaluation import AdjustedMeanRankIndex
 
@@ -16,6 +15,7 @@ TEST_METRIC_DATA = OrderedDict([
     ("n_nodes", 5),
     ("head_idx", torch.tensor([1, 2, 3, 4])),
     ("tail_idx", torch.tensor([0, 0, 1, 2])),
+    ("relation_idx", torch.tensor([0, 0, 1, 1])),
     ("logits", torch.tensor(
         [
             [10, -1, 5, -10, 2],  # rank 1
@@ -27,15 +27,22 @@ TEST_METRIC_DATA = OrderedDict([
 ])
 
 
-FULL_ADJ_MAT = scipy.sparse.csr_matrix(
+FULL_ADJ_MAT = sparse.as_coo(np.array([
     [
         [0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0],  # shift by 0
         [1, 1, 0, 0, 0],  # shift rank by 1 up
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+    ],
+    [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
         [0, 1, 1, 0, 1],  # shift rank by 2 up
         [1, 0, 1, 0, 0],  # shift rank by 1 up
     ]
-)
+]))
 
 
 def parametrize_with_dict(dict: ty.OrderedDict):
@@ -74,10 +81,10 @@ class TestMetrics:
         ]
 
     @staticmethod
-    def _get_actual_ranks_filtered(logits, head_idx, tail_idx, full_adj_mat):
-        adj_mat = full_adj_mat[head_idx].todense()
+    def _get_actual_ranks_filtered(logits, head_idx, tail_idx, relation_idx, full_adj_mat):
+        adj_mat = full_adj_mat[relation_idx, head_idx].todense()
         return [
-            TestMetrics._get_rank_filtered(row.tolist(), pos.item(), adj_row.tolist()[0])
+            TestMetrics._get_rank_filtered(row.tolist(), pos.item(), adj_row)
             for row, pos, adj_row in zip(logits, tail_idx, adj_mat)
         ]
 
@@ -85,11 +92,11 @@ class TestMetrics:
     def _get_actual_mrr(actual_ranks: ty.List[int]):
         return sum(map(lambda r: 1 / r, actual_ranks)) / len(actual_ranks)
 
-    def test_mrr(self, n_nodes, head_idx, tail_idx, logits):
+    def test_mrr(self, n_nodes, head_idx, tail_idx, relation_idx, logits):
         mrr = MRRLinkPredictionMetric(topk_args=[1, n_nodes])
 
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
@@ -100,27 +107,27 @@ class TestMetrics:
         assert result[f"mrr{n_nodes:02d}"] == pytest.approx(actual_mrr)
 
     @pytest.mark.parametrize("full_adj_mat", [FULL_ADJ_MAT])
-    def test_mrr_filtered(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat):
+    def test_mrr_filtered(self, head_idx, tail_idx, relation_idx, logits, n_nodes, full_adj_mat):
         mrr = FilteredLinkPredictionMetric(
             MRRLinkPredictionMetric(topk_args=[1, n_nodes]),
             full_adj_mat=full_adj_mat
         )
 
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
 
         actual_ranks = TestMetrics._get_actual_ranks_filtered(
-            logits, head_idx=head_idx, tail_idx=tail_idx, full_adj_mat=full_adj_mat
+            logits=logits, head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, full_adj_mat=full_adj_mat
         )
         actual_mrr = TestMetrics._get_actual_mrr(actual_ranks)
 
         assert result[f"mrr{n_nodes:02d}"] == pytest.approx(actual_mrr)
 
     @pytest.mark.parametrize("full_adj_mat", [FULL_ADJ_MAT])
-    def test_filtered_metric_is_greater_or_equal(self, head_idx, tail_idx, logits, n_nodes, full_adj_mat):
+    def test_filtered_metric_is_greater_or_equal(self, head_idx, tail_idx, relation_idx, logits, n_nodes, full_adj_mat):
         topk_args = [1, n_nodes]
         mrr = MRRLinkPredictionMetric(topk_args=topk_args)
         filtered_mrr = FilteredLinkPredictionMetric(
@@ -129,10 +136,10 @@ class TestMetrics:
         )
 
         mrr.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
         )
         filtered_mrr(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
         )
 
         result = mrr.compute_key_value()
@@ -146,25 +153,25 @@ class TestMetrics:
 
     # TODO: add tests for metrics other than MRR
 
-    def test_amri(self, n_nodes, head_idx, tail_idx, logits):
+    def test_amri(self, n_nodes, head_idx, tail_idx, relation_idx, logits):
         amri = AdjustedMeanRankIndex(topk_args=[n_nodes])
 
         amri.update(
-            head_idx=head_idx, tail_idx=tail_idx, logits=logits
+            head_idx=head_idx, tail_idx=tail_idx, relation_idx=relation_idx, logits=logits
         )
 
         r = amri.compute_key_value()
         assert r["amri"] == pytest.approx(0.25)
 
-    def test_amri_batched(self, n_nodes, head_idx, tail_idx, logits):
+    def test_amri_batched(self, n_nodes, head_idx, tail_idx, relation_idx, logits):
         amri = AdjustedMeanRankIndex(topk_args=[n_nodes])
 
         split = 2
         amri.update(
-            head_idx=head_idx[:split], tail_idx=tail_idx[:split], logits=logits[:split]
+            head_idx=head_idx[:split], tail_idx=tail_idx[:split], relation_idx=relation_idx, logits=logits[:split]
         )
         amri.update(
-            head_idx=head_idx[split:], tail_idx=tail_idx[split:], logits=logits[split:]
+            head_idx=head_idx[split:], tail_idx=tail_idx[split:], relation_idx=relation_idx, logits=logits[split:]
         )
 
         r = amri.compute_key_value()
