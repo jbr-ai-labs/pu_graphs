@@ -14,7 +14,21 @@ from tqdm import tqdm
 class LinkPredictionMetric(IMetric, abc.ABC):
 
     @abc.abstractmethod
-    def update(self, head_idx, tail_idx, relation_idx, logits) -> Any:
+    def update(
+        self,
+        head_idx: torch.LongTensor,
+        tail_idx: torch.LongTensor,
+        relation_idx: torch.LongTensor,
+        logits: torch.Tensor
+    ) -> Any:
+        """
+
+        :param head_idx: shape [batch_size]
+        :param tail_idx: shape [batch_size]
+        :param relation_idx: shape [batch_size]
+        :param logits: shape [batch_size, number_of_nodes]
+        :return:
+        """
         pass
 
 
@@ -51,7 +65,7 @@ class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
         self.full_adj_mat = full_adj_mat
 
     @staticmethod
-    def filter_logits(full_adj_mat, logits, head_idx, tail_idx, relation_idx):
+    def filter_logits(full_adj_mat, logits, head_idx, tail_idx, relation_idx) -> torch.Tensor:
         """
         Makes logits for pairs other than (head_idx, tail_idx)
         """
@@ -60,7 +74,10 @@ class FilteredLinkPredictionMetric(LinkPredictionMetricAdapter):
             tail_idx,
             num_classes=full_adj_mat.shape[1]
         )
-        mask = batch_adj_mat - targets
+
+        # target may be absent from full_adj_mat since we take train as full graph
+        mask = (batch_adj_mat - targets).maximum(torch.tensor(0))
+
         return torch.where(
             mask.byte(),
             torch.tensor(float("-inf")).type(logits.dtype),
