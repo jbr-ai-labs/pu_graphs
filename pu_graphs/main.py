@@ -23,6 +23,7 @@ from pu_graphs.modeling.loss import UnbiasedPULoss, logistic_loss
 
 
 def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
+    # TODO: explain why are you using train graph as a full graph
     full_graph = graphs["train"]
     eval_graph = graphs[eval_loader_key]
 
