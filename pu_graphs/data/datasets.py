@@ -1,10 +1,9 @@
 import typing as ty
 
+import dgl
 import torch
 from torch import LongTensor
 from torch.utils.data import Dataset
-
-import dgl
 
 from .negative_sampling import SamplingStrategy
 
@@ -14,8 +13,15 @@ class DglGraphDataset(Dataset):
     def __init__(self, graph: dgl.DGLGraph, strategy: SamplingStrategy):
         self.graph = graph
         self.strategy = strategy
+
+        head_idx, tail_idx = self.graph.edges()
+        relation_idx = self.graph.edata["etype"]
+
+        assert len(head_idx) == len(tail_idx)
+        assert len(head_idx) == len(relation_idx)
+
         self.edges: ty.List[ty.Tuple[LongTensor, LongTensor, LongTensor]] = list(zip(
-            *(*self.graph.edges(), self.graph.edata["etype"])
+            *(head_idx, tail_idx, relation_idx)
         ))
 
     def __len__(self) -> int:
