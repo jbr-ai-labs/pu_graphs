@@ -12,8 +12,8 @@ from catalyst.utils.config import load_config
 from torch.utils.data import DataLoader
 
 from pu_graphs.data.datasets import DglGraphDataset
+from pu_graphs.data.datasetWN18RR import WN18RRDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
-from pu_graphs.data.utils import get_split, load_wn18rr
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
@@ -60,9 +60,6 @@ def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
 
 
 def main():
-    load_wn18rr()
-
-    return
     config = hydra_slayer.get_from_params(
         **load_config("config.yaml")  # FIXME: replace hardcode
     )
@@ -73,8 +70,11 @@ def main():
 
     set_global_seed(config["seed"])
 
-    fb15 = dgl.data.FB15k237Dataset()
-    full_graph = fb15[0]
+    if config['dataset'] == 'FB15k237':
+        dataset = dgl.data.FB15k237Dataset()
+    elif config['dataset'] == 'WN18RR':
+        dataset = WN18RRDataset()
+    full_graph = dataset[0]
 
     graphs = {
         k: get_split(full_graph, k)

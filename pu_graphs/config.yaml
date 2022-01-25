@@ -8,6 +8,7 @@ optimizer:
   _mode_: partial
   lr: 0.0001
 
+dataset: 'WN18RR'
 batch_size: 64
 eval_batch_size: 4
 embedding_dim: 4
