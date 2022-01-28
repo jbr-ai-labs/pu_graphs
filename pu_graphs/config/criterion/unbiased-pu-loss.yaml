@@ -1,0 +1,6 @@
+_target_: pu_graphs.modeling.loss.UnbiasedPULoss
+surrogate_loss:
+  _target_: pu_graphs.utils.get_function
+  function_fqn: pu_graphs.modeling.loss.logistic_loss
+  _mode_: call
+pi: 0.5

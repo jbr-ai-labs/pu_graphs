@@ -8,7 +8,7 @@ import sparse
 import torch
 from catalyst import dl
 from catalyst.utils import set_global_seed
-from catalyst.utils.config import load_config
+from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
 from pu_graphs.data.datasets import DglGraphDataset
@@ -19,7 +19,8 @@ from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
     AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, FilteredLinkPredictionMetric
 from pu_graphs.modeling.dist_mult import DistMult
-from pu_graphs.modeling.loss import UnbiasedPULoss, logistic_loss
+
+CONFIG_DIR = Path("config")
 
 
 def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
@@ -60,10 +61,32 @@ def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
     )
 
 
+def nested_yaml_resolver(name, *, _root_, _parent_, _node_):
+    nested_config_path = CONFIG_DIR.joinpath(_node_._key(), name)
+    return OmegaConf.load(nested_config_path)
+
+
+def update_value(oc_config, key: str, value, resolve_anew: bool = True, check_existed: bool = True):
+    if check_existed and OmegaConf.select(oc_config, key) is None:
+        raise ValueError(f"No value exists for a key = {key}")
+
+    OmegaConf.update(oc_config, key, value)
+    if resolve_anew:
+        OmegaConf.resolve(oc_config)
+    return oc_config
+
+
 def main():
-    config = hydra_slayer.get_from_params(
-        **load_config("config.yaml")  # FIXME: replace hardcode
-    )
+    OmegaConf.register_new_resolver("nested_yaml", nested_yaml_resolver)
+    oc_config = OmegaConf.load(CONFIG_DIR / "config.yaml")
+    OmegaConf.resolve(oc_config)
+
+    # Merge with cli parameters, you can set nested values via dot notation, e.g criterion.pi=0.99
+    oc_config.merge_with_cli()
+
+    plain_config = OmegaConf.to_container(oc_config, resolve=True)
+
+    config = hydra_slayer.get_from_params(**plain_config)
     is_debug = config["is_debug"]
 
     if is_debug:
@@ -109,7 +132,7 @@ def main():
         embedding_dim=config["embedding_dim"]
     )
     optimizer = config["optimizer"](model.parameters())
-    criterion = UnbiasedPULoss(logistic_loss, pi=0.5)  # FIXME: estimate pi somehow
+    criterion = config["criterion"]
 
     def transform_as_pos_neg(batch):
         n_positives = batch["head_indices"].size(0)
