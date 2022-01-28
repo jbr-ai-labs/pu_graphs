@@ -24,7 +24,6 @@ CONFIG_DIR = Path("config")
 
 
 def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
-    # TODO: explain why are you using train graph as a full graph
     full_graph = graphs["train"]
     eval_graph = graphs[eval_loader_key]
 
@@ -164,6 +163,12 @@ def main():
             metric_key="loss",
             minimize=True,
             load_on_stage_end="best"
+        ),
+        evaluation_callback(
+            graphs=graphs,
+            loaders=loaders,
+            eval_loader_key="valid",
+            is_debug=is_debug
         ),
         evaluation_callback(
             graphs=graphs,
