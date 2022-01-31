@@ -12,6 +12,7 @@ from catalyst.utils.config import load_config
 from torch.utils.data import DataLoader
 
 from pu_graphs.data.datasets import DglGraphDataset
+from pu_graphs.data.utils import get_split
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.debug_utils import DebugDataset
