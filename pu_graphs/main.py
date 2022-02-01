@@ -4,7 +4,7 @@ from pathlib import Path
 import dgl
 import hydra_slayer
 import numpy as np
-# import sparse
+import sparse
 import torch
 from catalyst import dl
 from catalyst.utils import set_global_seed

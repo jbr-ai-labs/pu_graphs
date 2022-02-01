@@ -121,7 +121,6 @@ class WN18RRDataset(DGLDataset):
             print("# testing edges: {}".format(self._test.shape[0]))
 
         # add node information
-        print(graph.device)
         graph.ndata['ntype'] = ntype
 
         # add separation
@@ -137,7 +136,6 @@ class WN18RRDataset(DGLDataset):
         df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
         df_enum = df_enum.set_index('original')
         graph.edata['etype'] = etype
-        print(graph.edata['etype'].numpy())
 
         self._g = graph
 
@@ -263,36 +261,23 @@ class WN18RRDataset(DGLDataset):
         return 1
 
     def save(self):
-        return 
-        # save processed data to directory `self.save_path`
-        # save graphs and labels
-        graph_path = os.path.join(self.save_path, WN18RRDataConstants.graph_file)
-        graph_labels = {"glabel": torch.tensor(list(range(self._num_rels)))}
-        save_graphs(graph_path, self._g, graph_labels)
-        # save other information in python dict
-        info_path = os.path.join(self.save_path, 'info.pkl')
-        save_info(info_path, {'df_train': self._train,
-                              'df_val': self._valid,
-                              'df_test': self._test,
-                              'num_nodes': self._num_nodes,
-                              'num_rels': self._num_rels})
+        """
+        Save processed data to directory `self.save_path`.
+        Passed.
+        """
+        pass
+            
 
     def load(self):
-        return 
-        # load processed data from directory `self.save_path`
-        graph_path = os.path.join(self.save_path, WN18RRDataConstants.graph_file)
-        self._g, _ = load_graphs(graph_path)
-        info_path = os.path.join(self.save_path, WN18RRDataConstants.info_file)
-        info = load_info(info_path)['num_classes']
-        self._train = info['df_train']
-        self._valid = info['df_val']
-        self._test = info['df_test']
-        self._num_nodes = info['num_nodes']
-        self._num_rels = info['num_rels']
+        """
+        Load processed data from directory `self.save_path`.
+        Passed.
+        """
+        pass
 
     def has_cache(self):
-        return 
-        # check whether there are processed data in `self.save_path`
-        graph_path = os.path.join(self.save_path, WN18RRDataConstants.graph_file)
-        info_path = os.path.join(self.save_path, WN18RRDataConstants.info_file)
-        return os.path.exists(graph_path) and os.path.exists(info_path)
+        """
+        Check whether there are processed data in `self.save_path`.
+        Passed.
+        """
+        pass
