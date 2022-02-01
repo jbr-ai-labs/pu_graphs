@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import dgl
@@ -6,6 +7,7 @@ import hydra_slayer
 import numpy as np
 import sparse
 import torch
+import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
 from omegaconf import OmegaConf
@@ -18,6 +20,7 @@ from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
     AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, FilteredLinkPredictionMetric
+from pu_graphs.external_init_wandb_logger import ExternalInitWandbLogger
 from pu_graphs.modeling.dist_mult import DistMult
 
 CONFIG_DIR = Path("config")
@@ -75,13 +78,21 @@ def update_value(oc_config, key: str, value, resolve_anew: bool = True, check_ex
     return oc_config
 
 
+def init_run(config):
+    sweep_run = wandb.init(config=config)
+    return sweep_run
+
+
 def main():
     OmegaConf.register_new_resolver("nested_yaml", nested_yaml_resolver)
     oc_config = OmegaConf.load(CONFIG_DIR / "config.yaml")
     OmegaConf.resolve(oc_config)
 
     # Merge with cli parameters, you can set nested values via dot notation, e.g criterion.pi=0.99
-    oc_config.merge_with_cli()
+    oc_config.merge_with_dotlist([
+        x[2:]  # Drop '--' prefix
+        for x in sys.argv[1:]
+    ])
 
     plain_config = OmegaConf.to_container(oc_config, resolve=True)
 
@@ -179,7 +190,7 @@ def main():
     ]
 
     loggers = {
-        "wandb": dl.WandbLogger(project="pu_graphs", name=config["run_name"])
+        "wandb": ExternalInitWandbLogger(init_run(config=plain_config))
     }
 
     runner = dl.SupervisedRunner(
@@ -201,7 +212,6 @@ def main():
         num_epochs=config["num_epochs"],
         check=is_debug,
         load_best_on_end=True,
-        hparams=config,
         loggers=loggers
     )
 
