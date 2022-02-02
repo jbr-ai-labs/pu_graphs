@@ -14,8 +14,9 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
 from pu_graphs.data.datasets import DglGraphDataset
-from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.data.utils import get_split
+from pu_graphs.data.datasetWN18RR import WN18RRDataset
+from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
@@ -104,8 +105,11 @@ def main():
 
     set_global_seed(config["seed"])
 
-    fb15 = dgl.data.FB15k237Dataset()
-    full_graph = fb15[0]
+    if config['dataset'] == 'FB15k237':
+        dataset = dgl.data.FB15k237Dataset()
+    elif config['dataset'] == 'WN18RR':
+        dataset = WN18RRDataset()
+    full_graph = dataset[0]
 
     graphs = {
         k: get_split(full_graph, k)
