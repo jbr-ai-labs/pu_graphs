@@ -109,6 +109,9 @@ def main():
         dataset = dgl.data.FB15k237Dataset()
     elif config['dataset'] == 'WN18RR':
         dataset = WN18RRDataset()
+    else:
+        print(f"No such dataset as {config['dataset']}")
+        return
     full_graph = dataset[0]
 
     graphs = {

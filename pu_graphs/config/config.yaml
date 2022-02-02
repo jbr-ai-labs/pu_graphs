@@ -10,6 +10,7 @@ optimizer:
 
 criterion: "${nested_yaml:positive-negative-loss.yaml}"
 
+dataset: "WN18RR"
 batch_size: 64
 eval_batch_size: 4
 embedding_dim: 4
