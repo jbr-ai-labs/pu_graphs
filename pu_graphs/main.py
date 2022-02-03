@@ -22,6 +22,7 @@ from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
     AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, FilteredLinkPredictionMetric
 from pu_graphs.external_init_wandb_logger import ExternalInitWandbLogger
+from pu_graphs.modeling.complex import ComplEx
 from pu_graphs.modeling.dist_mult import DistMult
 
 CONFIG_DIR = Path("config")
@@ -143,11 +144,23 @@ def main():
     }
 
     # We assume that each node in present in every graph: train, valid, test
-    model = DistMult(
-        n_nodes=full_graph.number_of_nodes(),
-        n_relations=graphs["train"].edata["etype"].max().item() + 1,
-        embedding_dim=config["embedding_dim"]
-    )
+    model = None
+    if config['model'] == 'distmult':
+        model = DistMult(
+            n_nodes=full_graph.number_of_nodes(),
+            n_relations=graphs["train"].edata["etype"].max().item() + 1,
+            embedding_dim=config["embedding_dim"]
+        )
+    elif config['model'] == 'complex':
+        model = ComplEx(
+            n_nodes=full_graph.number_of_nodes(),
+            n_relations=graphs["train"].edata["etype"].max().item() + 1,
+            embedding_dim=config["embedding_dim"]
+        )
+    else:
+        print(f"No such model as {config['model']}")
+        return
+
     optimizer = config["optimizer"](model.parameters())
     criterion = config["criterion"]
 
