@@ -1,0 +1,6 @@
+head_idx = "head_indices"
+tail_idx = "tail_indices"
+rel_idx = "relation_indices"
+neg_head_idx = "neg_head_indices"
+neg_tail_idx = "neg_tail_indices"
+labels = "labels"

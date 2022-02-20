@@ -13,10 +13,11 @@ from catalyst.utils import set_global_seed
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
-from pu_graphs.data.datasets import DglGraphDataset
-from pu_graphs.data.utils import get_split
+from pu_graphs.data import keys
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
+from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
+from pu_graphs.data.utils import get_split
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
@@ -165,13 +166,13 @@ def main():
     criterion = config["criterion"]
 
     def transform_as_pos_neg(batch):
-        n_positives = batch["head_indices"].size(0)
-        n_unlabeled = batch["neg_head_indices"].size(0)
+        n_positives = batch[keys.head_idx].size(0)
+        n_unlabeled = batch[keys.neg_head_idx].size(0)
         new_fields = {
-            "head_indices": torch.cat([batch["head_indices"], batch["neg_head_indices"]]),
-            "tail_indices": torch.cat([batch["tail_indices"], batch["neg_tail_indices"]]),
-            "relation_indices": batch["relation_indices"].expand([2, -1]).flatten(),
-            "labels": torch.cat([torch.ones(n_positives), torch.zeros(n_unlabeled)]),
+            keys.head_idx: torch.cat([batch[keys.head_idx], batch[keys.neg_head_idx]]),
+            keys.tail_idx: torch.cat([batch[keys.tail_idx], batch[keys.neg_tail_idx]]),
+            keys.rel_idx: batch[keys.rel_idx].expand([2, -1]).flatten(),
+            keys.labels: torch.cat([torch.ones(n_positives), torch.zeros(n_unlabeled)]),
         }
         batch.update(new_fields)
         return batch
