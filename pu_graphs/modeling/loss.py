@@ -55,3 +55,21 @@ def sigmoid_loss(t: Tensor):
 
 def logistic_loss(t: Tensor):
     return t.neg().exp().log1p()
+
+
+class MarginBasedLoss(nn.Module):
+
+    def __init__(self, margin: float):
+        super(MarginBasedLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, logits, labels):
+        positive_logits = logits[labels == 1]  # Shape [batch_size]
+        negative_logits = logits[labels == 0]  # Shape [batch_size]
+
+        score_distance = negative_logits.unsqueeze(-1) - positive_logits  # Shape [batch_size, batch_size]
+        score_distance.add_(self.margin)
+
+        loss = score_distance.maximum(torch.tensor(0)).sum()
+
+        return loss
