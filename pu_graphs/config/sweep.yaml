@@ -1,0 +1,20 @@
+project: pu_graphs
+entity: hse-jbr-ai
+sweep: loss-sweep-debug
+
+program: main.py
+
+metric:
+  name: mrr_filtered_epoch/test
+  goal: maximize
+
+method: grid
+parameters:
+  criterion._target_:
+    values:
+      - pu_graphs.modeling.loss.UnbiasedPULoss
+      - pu_graphs.modeling.loss.PositiveNegativeLoss
+  criterion.pi:
+    values:
+      - 0.4
+      - 0.5

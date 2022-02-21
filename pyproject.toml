@@ -1,17 +1,21 @@
 [tool.poetry]
-name = "pu-graph"
+name = "pu-graphs"
 version = "0.1.0"
 description = ""
 authors = ["Dima <d.i.orekhov@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "3.8.*"
-catalyst = "21.9.*"
+catalyst = "21.10.*"
 torch = "1.8.*"
 dgl = "0.6.*"
+wandb = "0.12.*"
+sparse = "0.13.*"
+omegaconf = "2.1.*"
 
 [tool.poetry.dev-dependencies]
 pytest = "6.2.*"
+pytest-mock = "3.6.*"
 jupyterlab = "3.*"
 
 [build-system]
