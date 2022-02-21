@@ -69,14 +69,27 @@ class EvaluationCallback(dl.Callback):
             for k, v in m.compute_key_value().items()
         }
 
+    def on_epoch_end(self, runner: dl.IRunner) -> None:
+        if self.loader_key != "valid":
+            return
+
+        self._reset_metrics()
+
+        metrics = flatten_dict(self._compute_metrics(runner))
+        self._log_metrics(runner, metrics)
+
     def on_experiment_end(self, runner: dl.IRunner) -> None:
-        if self.was_called:
+        if self.loader_key != "test" or self.was_called:
             return
         else:
             self.was_called = True
 
-        metrics = flatten_dict(self._compute_metrics(runner))
+        self._reset_metrics()
 
+        metrics = flatten_dict(self._compute_metrics(runner))
+        self._log_metrics(runner, metrics)
+
+    def _log_metrics(self, runner, metrics):
         kwargs = deepcopy(runner._log_defaults)
         kwargs.update({
             "metrics": metrics,
@@ -86,3 +99,8 @@ class EvaluationCallback(dl.Callback):
 
         for logger in runner.loggers.values():
             logger.log_metrics(**kwargs)
+
+    def _reset_metrics(self):
+        for m in self.metrics.values():
+            m.reset()
+
