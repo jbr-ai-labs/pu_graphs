@@ -7,7 +7,8 @@ from . import keys
 
 
 def get_split(graph: dgl.DGLGraph, split_key: str) -> dgl.DGLGraph:
-    split_mask = graph.edata[f"{split_key}_edge_mask"]
+    mask_key = f"{split_key}_mask" if split_key != "valid" else "val_mask"
+    split_mask = graph.edata[mask_key]
     split_edges_index = torch.nonzero(split_mask, as_tuple=False).squeeze()
 
     split_graph = graph.edge_subgraph(split_edges_index, preserve_nodes=True)
