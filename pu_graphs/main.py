@@ -80,7 +80,7 @@ def update_value(oc_config, key: str, value, resolve_anew: bool = True, check_ex
 
 
 def init_run(config):
-    sweep_run = wandb.init(config=config)
+    sweep_run = wandb.init(project="pu_graphs", config=config)
     return sweep_run
 
 
