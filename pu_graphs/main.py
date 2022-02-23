@@ -1,4 +1,6 @@
-import os
+import sys
+from pathlib import Path
+
 import sys
 from pathlib import Path
 
@@ -100,8 +102,8 @@ def main():
     config = hydra_slayer.get_from_params(**plain_config)
     is_debug = config["is_debug"]
 
-    if is_debug:
-        os.environ["WANDB_MODE"] = "dryrun"
+    #if is_debug:
+    #    os.environ["WANDB_MODE"] = "dryrun"
 
     set_global_seed(config["seed"])
 
@@ -163,7 +165,9 @@ def main():
     optimizer = config["optimizer"](model.parameters())
     criterion = config["criterion"]
 
-    logdir = Path("./logdir") / config["run_name"]
+    wandb_run = init_run(config=plain_config)
+    run_name = wandb_run.name or config["run_name"]
+    logdir = Path("./logdir") / run_name
     callbacks = [
         dl.BatchTransformCallback(
             transform=transform_as_pos_neg,
@@ -176,7 +180,7 @@ def main():
             minimize=True
         ),
         dl.CheckpointCallback(
-            logdir=logdir.joinpath("checkpoints"),
+            logdir=logdir.joinpath("checkpoints").__str__(),
             loader_key="valid",
             metric_key="loss",
             minimize=True,
@@ -197,7 +201,7 @@ def main():
     ]
 
     loggers = {
-        "wandb": ExternalInitWandbLogger(init_run(config=plain_config))
+        "wandb": ExternalInitWandbLogger(wandb_run)
     }
 
     runner = dl.SupervisedRunner(
