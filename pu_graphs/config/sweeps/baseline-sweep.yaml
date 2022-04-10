@@ -1,0 +1,22 @@
+project: pu_graphs
+entity: hse-jbr-ai
+sweep: baseline-swepp-wn18rr
+
+program: main.py
+
+metric:
+  name: mrr_filtered_epoch/test
+  goal: maximize
+
+method: grid
+parameters:
+  dataset:
+    value: "WN18RR"
+  criterion:
+    values:
+      - "${nested_yaml:unbiased-pu-loss.yaml}"
+      - "${nested_yaml:margin-loss.yaml}"
+  model:
+    values:
+      - "distmult"
+      - "complex"

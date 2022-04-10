@@ -8,9 +8,9 @@ optimizer:
   _mode_: partial
   lr: 0.0001
 
-criterion: "${nested_yaml:positive-negative-loss.yaml}"
+criterion: "${nested_yaml:unbiased-pu-loss.yaml}"
 
-dataset: "WN18RR"
+dataset: "FB15k237"
 model: "complex"
 batch_size: 64
 eval_batch_size: 4

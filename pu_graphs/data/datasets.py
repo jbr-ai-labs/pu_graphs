@@ -5,6 +5,7 @@ import torch
 from torch import LongTensor
 from torch.utils.data import Dataset
 
+from . import keys
 from .negative_sampling import SamplingStrategy
 
 
@@ -31,9 +32,9 @@ class DglGraphDataset(Dataset):
         head_idx, tail_idx, relation_idx = self.edges[item]
         neg_head_idx, neg_tail_idx = self.strategy.sample(head_idx.item(), tail_idx.item())
         return {
-            "head_indices": head_idx,
-            "tail_indices": tail_idx,
-            "relation_indices": relation_idx,
-            "neg_head_indices": torch.tensor(neg_head_idx),
-            "neg_tail_indices": torch.tensor(neg_tail_idx),
+            keys.head_idx: head_idx,
+            keys.tail_idx: tail_idx,
+            keys.rel_idx: relation_idx,
+            keys.neg_head_idx: torch.tensor(neg_head_idx),
+            keys.neg_tail_idx: torch.tensor(neg_tail_idx),
         }

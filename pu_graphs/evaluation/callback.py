@@ -18,7 +18,8 @@ class EvaluationCallback(dl.Callback):
         metrics: ty.Dict[str, LinkPredictionMetric],
         loader: DataLoader,
         loader_key: str,
-        is_debug: bool  # TODO: refactor
+        is_debug: bool,  # TODO: refactor
+        eval_every_epoch: bool = False
     ):
         self.graph = graph
         self.metrics = metrics
@@ -26,6 +27,7 @@ class EvaluationCallback(dl.Callback):
         self.loader_key = loader_key
         self.scores = None
         self.is_debug = is_debug
+        self.eval_every_epoch = eval_every_epoch
         self.was_called = False  # FIXME: some internal catalyst problems
         super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.ExternalExtra, node=dl.CallbackNode.Master)
 
@@ -69,14 +71,27 @@ class EvaluationCallback(dl.Callback):
             for k, v in m.compute_key_value().items()
         }
 
+    def on_epoch_end(self, runner: dl.IRunner) -> None:
+        if self.loader_key == "test" or not self.eval_every_epoch:
+            return
+
+        self._reset_metrics()
+
+        metrics = flatten_dict(self._compute_metrics(runner))
+        self._log_metrics(runner, metrics)
+
     def on_experiment_end(self, runner: dl.IRunner) -> None:
-        if self.was_called:
+        if (self.loader_key != "test" and self.eval_every_epoch) or self.was_called:
             return
         else:
             self.was_called = True
 
-        metrics = flatten_dict(self._compute_metrics(runner))
+        self._reset_metrics()
 
+        metrics = flatten_dict(self._compute_metrics(runner))
+        self._log_metrics(runner, metrics)
+
+    def _log_metrics(self, runner, metrics):
         kwargs = deepcopy(runner._log_defaults)
         kwargs.update({
             "metrics": metrics,
@@ -86,3 +101,8 @@ class EvaluationCallback(dl.Callback):
 
         for logger in runner.loggers.values():
             logger.log_metrics(**kwargs)
+
+    def _reset_metrics(self):
+        for m in self.metrics.values():
+            m.reset()
+

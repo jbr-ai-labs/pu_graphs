@@ -1,4 +1,6 @@
-import os
+import sys
+from pathlib import Path
+
 import sys
 from pathlib import Path
 
@@ -6,17 +8,16 @@ import dgl
 import hydra_slayer
 import numpy as np
 import sparse
-import torch
 import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
-from pu_graphs.data.datasets import DglGraphDataset
-from pu_graphs.data.utils import get_split
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
+from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
+from pu_graphs.data.utils import get_split, transform_as_pos_neg
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
@@ -81,7 +82,7 @@ def update_value(oc_config, key: str, value, resolve_anew: bool = True, check_ex
 
 
 def init_run(config):
-    sweep_run = wandb.init(config=config)
+    sweep_run = wandb.init(project="pu_graphs", config=config)
     return sweep_run
 
 
@@ -101,8 +102,8 @@ def main():
     config = hydra_slayer.get_from_params(**plain_config)
     is_debug = config["is_debug"]
 
-    if is_debug:
-        os.environ["WANDB_MODE"] = "dryrun"
+    #if is_debug:
+    #    os.environ["WANDB_MODE"] = "dryrun"
 
     set_global_seed(config["seed"])
 
@@ -164,19 +165,9 @@ def main():
     optimizer = config["optimizer"](model.parameters())
     criterion = config["criterion"]
 
-    def transform_as_pos_neg(batch):
-        n_positives = batch["head_indices"].size(0)
-        n_unlabeled = batch["neg_head_indices"].size(0)
-        new_fields = {
-            "head_indices": torch.cat([batch["head_indices"], batch["neg_head_indices"]]),
-            "tail_indices": torch.cat([batch["tail_indices"], batch["neg_tail_indices"]]),
-            "relation_indices": batch["relation_indices"].expand([2, -1]).flatten(),
-            "labels": torch.cat([torch.ones(n_positives), torch.zeros(n_unlabeled)]),
-        }
-        batch.update(new_fields)
-        return batch
-
-    logdir = Path("./logdir") / config["run_name"]
+    wandb_run = init_run(config=plain_config)
+    run_name = wandb_run.name or config["run_name"]
+    logdir = Path("./logdir") / run_name
     callbacks = [
         dl.BatchTransformCallback(
             transform=transform_as_pos_neg,
@@ -189,7 +180,7 @@ def main():
             minimize=True
         ),
         dl.CheckpointCallback(
-            logdir=logdir.joinpath("checkpoints"),
+            logdir=logdir.joinpath("checkpoints").__str__(),
             loader_key="valid",
             metric_key="loss",
             minimize=True,
@@ -210,7 +201,7 @@ def main():
     ]
 
     loggers = {
-        "wandb": ExternalInitWandbLogger(init_run(config=plain_config))
+        "wandb": ExternalInitWandbLogger(wandb_run)
     }
 
     runner = dl.SupervisedRunner(

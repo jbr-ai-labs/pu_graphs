@@ -1,0 +1,27 @@
+project: pu_graphs
+entity: hse-jbr-ai
+sweep: models-param-sweep-FB15k237
+
+program: main.py
+
+metric:
+  name: mrr_filtered_epoch/test
+  goal: maximize
+
+method: grid
+parameters:
+  dataset:
+    value: "FB15k237"
+  criterion.pi:
+    values:
+      - 0.3
+      - 0.4
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+  model:
+    values:
+      - "distmult"
+      - "complex"
