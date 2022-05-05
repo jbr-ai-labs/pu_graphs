@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 
 from . import keys
 from .negative_sampling import SamplingStrategy
+from .utils import get_edges_as_triplets
 
 
 class DglGraphDataset(Dataset):
@@ -14,16 +15,7 @@ class DglGraphDataset(Dataset):
     def __init__(self, graph: dgl.DGLGraph, strategy: SamplingStrategy):
         self.graph = graph
         self.strategy = strategy
-
-        head_idx, tail_idx = self.graph.edges()
-        relation_idx = self.graph.edata["etype"]
-
-        assert len(head_idx) == len(tail_idx)
-        assert len(head_idx) == len(relation_idx)
-
-        self.edges: ty.List[ty.Tuple[LongTensor, LongTensor, LongTensor]] = list(zip(
-            *(head_idx, tail_idx, relation_idx)
-        ))
+        self.edges = get_edges_as_triplets(self.graph)
 
     def __len__(self) -> int:
         return len(self.edges)

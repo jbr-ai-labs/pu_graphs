@@ -2,6 +2,7 @@ import typing as ty
 
 import dgl
 import torch
+from torch import LongTensor
 
 from . import keys
 
@@ -28,3 +29,21 @@ def transform_as_pos_neg(batch: ty.Dict[str, ty.Any]):
     }
     batch.update(new_fields)
     return batch
+
+
+def get_edges_as_triplets(graph: dgl.DGLGraph) -> LongTensor:
+    """
+
+    :param graph:
+    :return: shape [n_edges, 3]
+    """
+    head_idx, tail_idx = graph.edges()
+    relation_idx = graph.edata["etype"]
+
+    assert len(head_idx) == len(tail_idx)
+    assert len(head_idx) == len(relation_idx)
+
+    # noinspection PyTypeChecker
+    return torch.tensor(list(zip(
+        *(head_idx, tail_idx, relation_idx)
+    )))

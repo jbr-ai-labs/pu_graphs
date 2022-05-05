@@ -19,7 +19,8 @@ class EvaluationCallback(dl.Callback):
         loader: DataLoader,
         loader_key: str,
         is_debug: bool,  # TODO: refactor
-        eval_every_epoch: bool = False
+        eval_every_epoch: bool = False,
+        model_key: ty.Optional[str] = None
     ):
         self.graph = graph
         self.metrics = metrics
@@ -28,11 +29,12 @@ class EvaluationCallback(dl.Callback):
         self.scores = None
         self.is_debug = is_debug
         self.eval_every_epoch = eval_every_epoch
+        self.model_key = model_key
         self.was_called = False  # FIXME: some internal catalyst problems
         super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.ExternalExtra, node=dl.CallbackNode.Master)
 
     def _compute_score(self, runner, head_idx, relation_idx):
-        model = runner.model
+        model = runner.model if self.model_key is None else runner.model[self.model_key]
         model.eval()
 
         batch_size = head_idx.shape[0]

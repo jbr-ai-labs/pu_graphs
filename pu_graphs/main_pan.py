@@ -1,11 +1,12 @@
+import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 import dgl
 import hydra_slayer
 import numpy as np
 import sparse
-import torch
 import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
@@ -15,6 +16,7 @@ from torch.utils.data import DataLoader
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
 from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
+from pu_graphs.data.unlabeled_sampler import UnlabeledSampler
 from pu_graphs.data.utils import get_split, transform_as_pos_neg
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
@@ -23,11 +25,12 @@ from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
 from pu_graphs.external_init_wandb_logger import ExternalInitWandbLogger
 from pu_graphs.modeling.complex import ComplEx
 from pu_graphs.modeling.dist_mult import DistMult
+from pu_graphs.modeling.pan_runner import PanRunner, get_pan_loss_by_key
 
 CONFIG_DIR = Path("config")
 
 
-def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
+def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool, model_key: Optional[str] = None):
     full_graph = graphs["train"]
     eval_graph = graphs[eval_loader_key]
 
@@ -60,7 +63,8 @@ def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool):
         metrics=metrics,
         loader=loaders[eval_loader_key],
         loader_key=eval_loader_key,
-        is_debug=is_debug
+        is_debug=is_debug,
+        model_key=model_key
     )
 
 
@@ -100,8 +104,8 @@ def main():
     config = hydra_slayer.get_from_params(**plain_config)
     is_debug = config["is_debug"]
 
-    #if is_debug:
-    #    os.environ["WANDB_MODE"] = "dryrun"
+    if is_debug:
+        os.environ["WANDB_MODE"] = "dryrun"
 
     set_global_seed(config["seed"])
 
@@ -142,26 +146,34 @@ def main():
         if k != "test"
     }
 
+    pan_keys = [PanRunner.DISC_KEY, PanRunner.CLS_KEY]
     # We assume that each node in present in every graph: train, valid, test
-    model = None
     if config['model'] == 'distmult':
-        model = DistMult(
-            n_nodes=full_graph.number_of_nodes(),
-            n_relations=graphs["train"].edata["etype"].max().item() + 1,
-            embedding_dim=config["embedding_dim"]
-        )
+        model_builder = DistMult
     elif config['model'] == 'complex':
-        model = ComplEx(
-            n_nodes=full_graph.number_of_nodes(),
-            n_relations=graphs["train"].edata["etype"].max().item() + 1,
-            embedding_dim=config["embedding_dim"]
-        )
+        model_builder = ComplEx
     else:
         print(f"No such model as {config['model']}")
         return
 
-    optimizer = config["optimizer"](model.parameters())
-    criterion = config["criterion"]
+    # Same models for disc and cls
+    model = {
+        k: model_builder(
+            n_nodes=full_graph.number_of_nodes(),
+            n_relations=graphs["train"].edata["etype"].max().item() + 1,
+            embedding_dim=config["embedding_dim"]
+        ) for k in pan_keys
+    }
+
+    optimizer = {
+        k: config["optimizer"](model[k].parameters())
+        for k in pan_keys
+    }
+
+    criterion = {
+        k: get_pan_loss_by_key(k, config["alpha"])
+        for k in pan_keys
+    }
 
     wandb_run = init_run(config=plain_config)
     run_name = wandb_run.name or config["run_name"]
@@ -171,6 +183,16 @@ def main():
             transform=transform_as_pos_neg,
             scope="on_batch_start"
         ),  # TODO: maybe move negative sampling to this callback too
+        dl.OptimizerCallback(
+            metric_key=PanRunner.LOSS_DISC_KEY,
+            model_key=PanRunner.DISC_KEY,
+            optimizer_key=PanRunner.DISC_KEY
+        ),
+        OptimizeIfMetricIsPresentCallback(
+            metric_key=PanRunner.LOSS_CLS_KEY,
+            model_key=PanRunner.CLS_KEY,
+            optimizer_key=PanRunner.CLS_KEY
+        ),
         dl.EarlyStoppingCallback(
             patience=config["patience"],
             loader_key="valid",
@@ -188,13 +210,15 @@ def main():
             graphs=graphs,
             loaders=loaders,
             eval_loader_key="valid",
-            is_debug=is_debug
+            is_debug=is_debug,
+            model_key=PanRunner.DISC_KEY
         ),
         evaluation_callback(
             graphs=graphs,
             loaders=loaders,
             eval_loader_key="test",
-            is_debug=is_debug
+            is_debug=is_debug,
+            model_key=PanRunner.DISC_KEY
         )
     ]
 
@@ -202,12 +226,7 @@ def main():
         "wandb": ExternalInitWandbLogger(wandb_run)
     }
 
-    runner = dl.SupervisedRunner(
-        input_key=["head_indices", "tail_indices", "relation_indices"],
-        output_key="logits",
-        target_key="labels",
-        loss_key="loss"
-    )
+    runner = PanRunner(unlabeled_sampler=UnlabeledSampler(graph=graphs["train"]))
 
     runner.train(
         engine=dl.DeviceEngine(),
@@ -225,49 +244,11 @@ def main():
     )
 
 
-class ClassifierLossCallback(dl.Callback):
-
-    def __init__(self, discriminator, classifier, unlabeled_sampler, alpha: float, k: int = 1):
-        self.discriminator = discriminator
-        self.classifier = classifier
-        self.unlabeled_sampler = unlabeled_sampler
-        self.alpha = alpha
-        self.k = k
-        self.global_batch_step = 0
-        super(ClassifierLossCallback, self).__init__(order=dl.CallbackOrder.Metric, node=dl.CallbackNode.Master)
-
-    def on_batch_end(self, runner: "IRunner") -> None:
-        if not runner.is_train_loader:
-            return
-
-        if self.global_batch_step % self.k != 0:
-            loss = self._update_classifier()
-            # TODO: log classifier loss
-
-        self.global_batch_step += 1
-
-    def _update_classifier(self):
-        unlabeled_data = self.unlabeled_sampler()
-
-        probs_cls: torch.Tensor = self.classifier(unlabeled_data)
-        term_cls = ((1 - probs_cls).log() - probs_cls.log())
-
-        with torch.no_grad():
-            probs_disc = self.discriminator(unlabeled_data)
-        term_disc = 2 * probs_disc - 1
-
-        loss = (self.alpha * term_cls * term_disc).sum()
-
-        # TODO: log
-
-        return loss
-
-
-class FooCallback(dl.OptimizerCallback):
+class OptimizeIfMetricIsPresentCallback(dl.OptimizerCallback):
     def on_batch_end(self, runner: "IRunner"):
         # Step only when metric is present
         if self.metric_key in runner.batch_metrics:
-            super(FooCallback, self).on_batch_end(runner)
+            super(OptimizeIfMetricIsPresentCallback, self).on_batch_end(runner)
 
 
 if __name__ == '__main__':
