@@ -9,6 +9,7 @@ optimizer:
   lr: 0.0001
 
 alpha: 0.2
+logit_to_prob: "sigmoid"
 
 dataset: "FB15k237"
 model: "complex"

@@ -27,7 +27,8 @@ from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
 from pu_graphs.external_init_wandb_logger import ExternalInitWandbLogger
 from pu_graphs.modeling.complex import ComplEx
 from pu_graphs.modeling.dist_mult import DistMult
-from pu_graphs.modeling.pan_runner import PanRunner, get_pan_loss_by_key
+from pu_graphs.modeling.pan_runner import PanRunner, get_pan_loss_by_key, LearnableLogitToProbability, \
+    SigmoidLogitToProbability
 
 CONFIG_DIR = Path("config")
 
@@ -176,16 +177,23 @@ def main():
         if k != "test"
     }
 
-    pan_keys = [PanRunner.DISC_KEY, PanRunner.CLS_KEY]
-    # We assume that each node in present in every graph: train, valid, test
-    if config['model'] == 'distmult':
-        model_builder = DistMult
-    elif config['model'] == 'complex':
-        model_builder = ComplEx
-    else:
-        print(f"No such model as {config['model']}")
-        return
+    def model_builder(*args, **kwargs):
+        if config['model'] == 'distmult':
+            model_cls = DistMult
+        elif config['model'] == 'complex':
+            model_cls = ComplEx
+        else:
+            raise ValueError(f"No such model as {config['model']}")
+        model = model_cls(*args, **kwargs)
 
+        logit_to_prob = "logit_to_prob"
+        if config[logit_to_prob] == "learnable":
+            return LearnableLogitToProbability(model)
+        elif config[logit_to_prob] == "sigmoid":
+            return SigmoidLogitToProbability(model)
+        raise ValueError(f"Unsupported logit_to_prob value: {logit_to_prob}")
+
+    pan_keys = [PanRunner.DISC_KEY, PanRunner.CLS_KEY]
     # Same models for disc and cls
     model = nn.ModuleDict({
         k: model_builder(

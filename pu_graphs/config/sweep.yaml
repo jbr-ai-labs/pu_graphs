@@ -10,11 +10,14 @@ metric:
 
 method: grid
 parameters:
-  criterion._target_:
+  alpha:
     values:
-      - pu_graphs.modeling.loss.UnbiasedPULoss
-      - pu_graphs.modeling.loss.PositiveNegativeLoss
-  criterion.pi:
+      - 0.0001
+      - 0.001
+      - 0.01
+      - 0.1
+      - 1.0
+  logit_to_prob:
     values:
-      - 0.4
-      - 0.5
+      - "sigmoid"
+      - "learnable"

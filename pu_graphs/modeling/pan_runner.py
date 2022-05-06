@@ -1,3 +1,4 @@
+import abc
 from typing import Mapping, Any
 
 import torch
@@ -6,6 +7,40 @@ from torch import nn
 
 from pu_graphs.data import keys
 from pu_graphs.data.unlabeled_sampler import UnlabeledSampler
+
+
+class LogitToProbability(nn.Module, abc.ABC):
+
+    def __init__(self, delegate: nn.Module):
+        super(LogitToProbability, self).__init__()
+        self.delegate = delegate
+
+    @abc.abstractmethod
+    def forward_logit(self, *args, **kwargs):
+        pass
+
+
+class SigmoidLogitToProbability(LogitToProbability):
+
+    def forward_logit(self, *args, **kwargs):
+        return self.delegate(*args, **kwargs)
+
+    def forward(self, *args, **kwargs):
+        return self.delegate(*args, **kwargs).sigmoid()
+
+
+class LearnableLogitToProbability(LogitToProbability):
+
+    def __init__(self, delegate):
+        super(LearnableLogitToProbability, self).__init__(delegate)
+        self.scale = nn.Linear(1, 1)
+
+    def forward_logit(self, *args, **kwargs):
+        x = self.delegate(*args, **kwargs)
+        return self.scale(x.unsqueeze(-1)).squeeze(-1)
+
+    def forward(self, *args, **kwargs):
+        return self.forward_logit(*args, **kwargs).sigmoid()
 
 
 class PanLoss(nn.Module):

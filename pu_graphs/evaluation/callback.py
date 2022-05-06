@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from pu_graphs.evaluation.evaluation import LinkPredictionMetric
+from pu_graphs.modeling.pan_runner import LogitToProbability
 
 
 class EvaluationCallback(dl.Callback):
@@ -50,11 +51,19 @@ class EvaluationCallback(dl.Callback):
         expanded_relation_idx = relation_idx.unsqueeze(-1).to(torch.device(runner.device))
 
         # shape: [batch_size, number_of_nodes]
-        logits = model(
-            head_indices=expanded_head_idx,
-            tail_indices=expanded_all_tail_idx,
-            relation_indices=expanded_relation_idx
-        )
+        if isinstance(model, LogitToProbability):
+            logits = model.forward_logit(
+                head_indices=expanded_head_idx,
+                tail_indices=expanded_all_tail_idx,
+                relation_indices=expanded_relation_idx
+            )
+        else:
+            logits = model.forward(
+                head_indices=expanded_head_idx,
+                tail_indices=expanded_all_tail_idx,
+                relation_indices=expanded_relation_idx
+            )
+
         return logits.to(torch.device("cpu"))
 
     @torch.no_grad()

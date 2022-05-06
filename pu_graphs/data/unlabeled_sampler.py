@@ -36,7 +36,6 @@ class UnlabeledSampler:
         }
 
     def sample_n_examples(self, n_examples: int) -> Mapping[str, Any]:
-        print(f"Sampling: n_examples={n_examples}")
         batch = self._sample_batch(n_examples)
         return self.sample_for_batch(batch)
 
