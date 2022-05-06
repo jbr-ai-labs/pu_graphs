@@ -73,8 +73,3 @@ class MarginBasedLoss(nn.Module):
         loss = score_distance.maximum(torch.tensor(0)).sum()
 
         return loss
-
-
-class PanDiscriminatorLoss(nn.Module):
-    def forward(self, logits_disc, logits_cls, labels):
-        pass
