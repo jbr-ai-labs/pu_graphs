@@ -149,20 +149,20 @@ class PanRunner(dl.Runner):
             head_indices=batch[keys.head_idx],
             tail_indices=batch[keys.tail_idx],
             relation_indices=batch[keys.rel_idx]
-        ).sigmoid()
+        )
 
         disc_unlabeled_probs = self.discriminator(
             head_indices=unlabeled_data[keys.head_idx],
             tail_indices=unlabeled_data[keys.tail_idx],
             relation_indices=unlabeled_data[keys.rel_idx]
-        ).sigmoid()
+        )
 
         with torch.no_grad():
             cls_unlabeled_probs = self.classifier(
                 head_indices=unlabeled_data[keys.head_idx],
                 tail_indices=unlabeled_data[keys.tail_idx],
                 relation_indices=unlabeled_data[keys.rel_idx]
-            ).sigmoid()
+            )
 
         self.batch.update(
             {
@@ -178,18 +178,17 @@ class PanRunner(dl.Runner):
         unlabeled_data = self.unlabeled_sampler.sample_n_examples(self.batch_size)
 
         with torch.no_grad():
-            disc_unlabeled_l = self.discriminator(
+            disc_unlabeled_probs = self.discriminator(
                 head_indices=unlabeled_data[keys.head_idx],
                 tail_indices=unlabeled_data[keys.tail_idx],
                 relation_indices=unlabeled_data[keys.rel_idx]
             )
-            disc_unlabeled_probs = disc_unlabeled_l.sigmoid()
 
         cls_unlabeled_probs = self.classifier(
             head_indices=unlabeled_data[keys.head_idx],
             tail_indices=unlabeled_data[keys.tail_idx],
             relation_indices=unlabeled_data[keys.rel_idx]
-        ).sigmoid()
+        )
 
         self.batch.update({
             keys.disc_unlabeled_probs: disc_unlabeled_probs,
