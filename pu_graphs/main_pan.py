@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader
 from pu_graphs.data import keys
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
 from pu_graphs.data.datasets import DglGraphDataset
-from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.data.unlabeled_sampler import UnlabeledSampler
 from pu_graphs.data.utils import get_split
 from pu_graphs.debug_utils import DebugDataset
@@ -154,10 +153,7 @@ def main():
         for k in ("train", "valid", "test")
     }
     datasets = {
-        split_key: DglGraphDataset(
-            graph=graph,
-            strategy=UniformStrategy(graph)
-        )
+        split_key: DglGraphDataset(graph=graph)
         for split_key, graph in graphs.items()
     }
 
