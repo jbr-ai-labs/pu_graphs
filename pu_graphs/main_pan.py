@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 import dgl
 import hydra_slayer
@@ -11,13 +11,15 @@ import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
 from omegaconf import OmegaConf
+from torch import nn
 from torch.utils.data import DataLoader
 
+from pu_graphs.data import keys
 from pu_graphs.data.datasetWN18RR import WN18RRDataset
 from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.negative_sampling import UniformStrategy
 from pu_graphs.data.unlabeled_sampler import UnlabeledSampler
-from pu_graphs.data.utils import get_split, transform_as_pos_neg
+from pu_graphs.data.utils import get_split
 from pu_graphs.debug_utils import DebugDataset
 from pu_graphs.evaluation.callback import EvaluationCallback
 from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
@@ -86,6 +88,34 @@ def update_value(oc_config, key: str, value, resolve_anew: bool = True, check_ex
 def init_run(config):
     sweep_run = wandb.init(project="pu_graphs", config=config)
     return sweep_run
+
+
+def init_opt_callbacks(key: str) -> Dict[str, dl.Callback]:
+    if key == PanRunner.DISC_KEY:
+        metric_key = PanRunner.LOSS_DISC_KEY
+        input_key = [keys.disc_positive_probs, keys.disc_unlabeled_probs, keys.cls_unlabeled_probs]
+    elif key == PanRunner.CLS_KEY:
+        metric_key = PanRunner.LOSS_CLS_KEY
+        input_key = [keys.disc_unlabeled_probs, keys.cls_unlabeled_probs]
+    else:
+        raise ValueError(f"key: {key}")
+
+    # noinspection PyTypeChecker
+    callbacks = {
+        PanRunner.criterion_key(key): ManualCriterionCallback(
+            input_key=input_key,
+            target_key=[],
+            metric_key=metric_key,
+            criterion_key=key
+        ),
+        PanRunner.optimizer_key(key): ManualOptimizerCallback(
+            metric_key=metric_key,
+            model_key=key,
+            optimizer_key=key
+        )
+    }
+
+    return callbacks
 
 
 def main():
@@ -157,13 +187,13 @@ def main():
         return
 
     # Same models for disc and cls
-    model = {
+    model = nn.ModuleDict({
         k: model_builder(
             n_nodes=full_graph.number_of_nodes(),
             n_relations=graphs["train"].edata["etype"].max().item() + 1,
             embedding_dim=config["embedding_dim"]
         ) for k in pan_keys
-    }
+    })
 
     optimizer = {
         k: config["optimizer"](model[k].parameters())
@@ -178,49 +208,37 @@ def main():
     wandb_run = init_run(config=plain_config)
     run_name = wandb_run.name or config["run_name"]
     logdir = Path("./logdir") / run_name
-    callbacks = [
-        dl.BatchTransformCallback(
-            transform=transform_as_pos_neg,
-            scope="on_batch_start"
-        ),  # TODO: maybe move negative sampling to this callback too
-        dl.OptimizerCallback(
-            metric_key=PanRunner.LOSS_DISC_KEY,
-            model_key=PanRunner.DISC_KEY,
-            optimizer_key=PanRunner.DISC_KEY
-        ),
-        OptimizeIfMetricIsPresentCallback(
-            metric_key=PanRunner.LOSS_CLS_KEY,
-            model_key=PanRunner.CLS_KEY,
-            optimizer_key=PanRunner.CLS_KEY
-        ),
-        dl.EarlyStoppingCallback(
+    callbacks = {
+        **init_opt_callbacks(PanRunner.DISC_KEY),
+        **init_opt_callbacks(PanRunner.CLS_KEY),
+        "early_stopping": dl.EarlyStoppingCallback(
             patience=config["patience"],
             loader_key="valid",
-            metric_key="loss",  # TODO: replace with MRR,
+            metric_key=PanRunner.LOSS_DISC_KEY,  # TODO: replace with MRR,
             minimize=True
         ),
-        dl.CheckpointCallback(
+        "checkpoint": dl.CheckpointCallback(
             logdir=logdir.joinpath("checkpoints").__str__(),
             loader_key="valid",
-            metric_key="loss",
+            metric_key=PanRunner.LOSS_DISC_KEY,
             minimize=True,
             load_on_stage_end="best"
         ),
-        evaluation_callback(
+        "valid_eval": evaluation_callback(
             graphs=graphs,
             loaders=loaders,
             eval_loader_key="valid",
             is_debug=is_debug,
             model_key=PanRunner.DISC_KEY
         ),
-        evaluation_callback(
+        "test_eval": evaluation_callback(
             graphs=graphs,
             loaders=loaders,
             eval_loader_key="test",
             is_debug=is_debug,
             model_key=PanRunner.DISC_KEY
         )
-    ]
+    }
 
     loggers = {
         "wandb": ExternalInitWandbLogger(wandb_run)
@@ -244,11 +262,22 @@ def main():
     )
 
 
-class OptimizeIfMetricIsPresentCallback(dl.OptimizerCallback):
+class ManualCriterionCallback(dl.CriterionCallback):
+
+    def on_batch_end(self, runner: "IRunner") -> None:
+        return
+
+    def on_batch_end_manual(self, runner) -> None:
+        super(ManualCriterionCallback, self).on_batch_end(runner)
+
+
+class ManualOptimizerCallback(dl.OptimizerCallback):
+
     def on_batch_end(self, runner: "IRunner"):
-        # Step only when metric is present
-        if self.metric_key in runner.batch_metrics:
-            super(OptimizeIfMetricIsPresentCallback, self).on_batch_end(runner)
+        return
+
+    def on_batch_end_manual(self, runner) -> None:
+        super(ManualOptimizerCallback, self).on_batch_end(runner)
 
 
 if __name__ == '__main__':

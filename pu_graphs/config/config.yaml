@@ -1,4 +1,4 @@
-run_name: dist-mult
+run_name: pan
 
 seed: 19
 is_debug: True
@@ -8,7 +8,7 @@ optimizer:
   _mode_: partial
   lr: 0.0001
 
-criterion: "${nested_yaml:unbiased-pu-loss.yaml}"
+alpha: 0.2
 
 dataset: "FB15k237"
 model: "complex"

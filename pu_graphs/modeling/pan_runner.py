@@ -25,20 +25,22 @@ class PanDiscriminatorLoss(PanLoss):
 
     def forward(self, disc_positive_probs, disc_unlabeled_probs, cls_unlabeled_probs):
         disc_term = disc_positive_probs.log() + (1 - disc_unlabeled_probs).log()
-        return (
+        loss = (
             disc_term
             + self.alpha * self._cls_term(
                 disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
             )
         ).sum()
+        return -loss  # grad ascent
 
 
 class PanClassifierLoss(PanLoss):
 
     def forward(self, disc_unlabeled_probs, cls_unlabeled_probs):
-        return self.alpha * self._cls_term(
+        loss = self.alpha * self._cls_term(
             disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
         ).sum()
+        return loss
 
     @staticmethod
     def _cls_term(disc_unlabeled_probs, cls_unlabeled_probs):
@@ -49,9 +51,9 @@ class PanClassifierLoss(PanLoss):
 
 def get_pan_loss_by_key(key: str, alpha: float) -> PanLoss:
     if key == PanRunner.DISC_KEY:
-        return PanClassifierLoss(alpha)
-    if key == PanRunner.CLS_KEY:
         return PanDiscriminatorLoss(alpha)
+    if key == PanRunner.CLS_KEY:
+        return PanClassifierLoss(alpha)
     raise ValueError(f"Unexpected value for PanLoss key: {key}")
 
 
@@ -62,6 +64,14 @@ class PanRunner(dl.Runner):
 
     LOSS_DISC_KEY = f"loss_{DISC_KEY}"
     LOSS_CLS_KEY = f"loss_{CLS_KEY}"
+
+    @staticmethod
+    def criterion_key(key: str):
+        return f"criterion_{key}"
+
+    @staticmethod
+    def optimizer_key(key: str):
+        return f"optimizer_{key}"
 
     def __init__(self, unlabeled_sampler: UnlabeledSampler, k: int = 1):
         self.discriminator = None
@@ -79,12 +89,13 @@ class PanRunner(dl.Runner):
         super(PanRunner, self).__init__()
 
     def on_experiment_start(self, runner: "IRunner"):
+        super(PanRunner, self).on_experiment_start(runner)
         print("Started experiment, initializing discriminator and classifier from model dict")
-        self.discriminator = self.model[PanRunner.DISC_KEY]
-        self.classifier = self.model[PanRunner.CLS_KEY]
+        self.discriminator = self._model[PanRunner.DISC_KEY]
+        self.classifier = self._model[PanRunner.CLS_KEY]
 
-        self.disc_loss = self.criterion[PanRunner.DISC_KEY]
-        self.cls_loss = self.criterion[PanRunner.CLS_KEY]
+        self.disc_loss = self._criterion[PanRunner.DISC_KEY]
+        self.cls_loss = self._criterion[PanRunner.CLS_KEY]
 
     def handle_batch(self, batch: Mapping[str, Any]) -> None:
         self.step_mod_k += 1
@@ -103,48 +114,56 @@ class PanRunner(dl.Runner):
             head_indices=batch[keys.head_idx],
             tail_indices=batch[keys.tail_idx],
             relation_indices=batch[keys.rel_idx]
-        )
+        ).sigmoid()
 
         disc_unlabeled_probs = self.discriminator(
             head_indices=unlabeled_data[keys.head_idx],
             tail_indices=unlabeled_data[keys.tail_idx],
             relation_indices=unlabeled_data[keys.rel_idx]
-        )
+        ).sigmoid()
 
         with torch.no_grad():
             cls_unlabeled_probs = self.classifier(
                 head_indices=unlabeled_data[keys.head_idx],
                 tail_indices=unlabeled_data[keys.tail_idx],
                 relation_indices=unlabeled_data[keys.rel_idx]
-            )
+            ).sigmoid()
 
-        loss = self.disc_loss(
-            disc_positive_probs=disc_positive_probs,
-            disc_unlabeled_probs=disc_unlabeled_probs,
-            cls_unlabeled_probs=cls_unlabeled_probs
+        self.batch.update(
+            {
+                keys.disc_positive_probs: disc_positive_probs,
+                keys.disc_unlabeled_probs: disc_unlabeled_probs,
+                keys.cls_unlabeled_probs: cls_unlabeled_probs
+            }
         )
 
-        self.batch_metrics[PanRunner.LOSS_DISC_KEY] = -loss  # Add minus to perform gradient ascent
+        self._optimize(PanRunner.DISC_KEY)
 
     def classifier_step(self):
         unlabeled_data = self.unlabeled_sampler.sample_n_examples(self.batch_size)
 
         with torch.no_grad():
-            disc_unlabeled_probs = self.discriminator(
+            disc_unlabeled_l = self.discriminator(
                 head_indices=unlabeled_data[keys.head_idx],
                 tail_indices=unlabeled_data[keys.tail_idx],
                 relation_indices=unlabeled_data[keys.rel_idx]
             )
+            disc_unlabeled_probs = disc_unlabeled_l.sigmoid()
 
         cls_unlabeled_probs = self.classifier(
             head_indices=unlabeled_data[keys.head_idx],
             tail_indices=unlabeled_data[keys.tail_idx],
             relation_indices=unlabeled_data[keys.rel_idx]
-        )
+        ).sigmoid()
 
-        loss = self.cls_loss(
-            disc_unlabeled_probs=disc_unlabeled_probs,
-            cls_unlabeled_probs=cls_unlabeled_probs
-        )
+        self.batch.update({
+            keys.disc_unlabeled_probs: disc_unlabeled_probs,
+            keys.cls_unlabeled_probs: cls_unlabeled_probs
+        })
 
-        self.batch_metrics[PanRunner.LOSS_CLS_KEY] = loss
+        self._optimize(PanRunner.CLS_KEY)
+
+    # noinspection PyUnresolvedReferences
+    def _optimize(self, key: str):
+        self.callbacks[PanRunner.criterion_key(key)].on_batch_end_manual(self)
+        self.callbacks[PanRunner.optimizer_key(key)].on_batch_end_manual(self)
