@@ -40,7 +40,7 @@ class UnlabeledSampler:
         return self.sample_for_batch(batch)
 
     def _sample_batch(self, n_examples: int) -> Mapping[str, Any]:
-        examples = self.edges[torch.randint(0, self.number_of_nodes, [n_examples])]
+        examples = self.edges[torch.randint(0, len(self.edges), [n_examples])]
         head_idx, tail_idx, rel_idx = examples.transpose(0, 1)
         return {
             keys.head_idx: head_idx,
