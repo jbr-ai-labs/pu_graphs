@@ -2,13 +2,16 @@ import typing as ty
 from copy import deepcopy
 
 import dgl
+import numpy as np
+import sparse
 import torch
 from catalyst import dl
 from catalyst.utils.misc import flatten_dict
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from pu_graphs.evaluation.evaluation import LinkPredictionMetric
+from pu_graphs.evaluation.evaluation import LinkPredictionMetric, FilteredLinkPredictionMetric, MRRLinkPredictionMetric, \
+    AccuracyLinkPredictionMetric, AdjustedMeanRankIndex
 from pu_graphs.modeling.pan_runner import LogitToProbability
 
 
@@ -117,3 +120,40 @@ class EvaluationCallback(dl.Callback):
         for m in self.metrics.values():
             m.reset()
 
+
+def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool, model_key: ty.Optional[str] = None):
+    full_graph = graphs["train"]
+    eval_graph = graphs[eval_loader_key]
+
+    number_of_nodes = full_graph.number_of_nodes()
+    number_of_relations = eval_graph.edata["etype"].max().item() + 1
+
+    head_idx, tail_idx = full_graph.edges()
+    head_idx = head_idx.numpy()
+    tail_idx = tail_idx.numpy()
+    relation_idx = full_graph.edata["etype"].numpy()
+
+    coordinates = (relation_idx, head_idx, tail_idx)
+    values = np.ones_like(head_idx)
+
+    full_adj_mat = sparse.COO((values, coordinates), shape=[number_of_relations, number_of_nodes, number_of_nodes])
+
+    metrics_builders = {
+        "mrr": lambda suf: MRRLinkPredictionMetric(topk_args=[number_of_nodes], suffix=suf),
+        "acc": lambda suf: AccuracyLinkPredictionMetric(topk_args=[1, 3, 5, 10, 20], suffix=suf),
+        "amri": lambda suf: AdjustedMeanRankIndex(topk_args=[full_graph.number_of_nodes()], suffix=suf)
+    }
+
+    metrics = {}
+    for k, v in metrics_builders.items():
+        metrics[k] = v("")
+        metrics[f"{k}_filtered"] = FilteredLinkPredictionMetric(metric=v("_filtered"), full_adj_mat=full_adj_mat)
+
+    return EvaluationCallback(
+        graph=eval_graph,
+        metrics=metrics,
+        loader=loaders[eval_loader_key],
+        loader_key=eval_loader_key,
+        is_debug=is_debug,
+        model_key=model_key
+    )

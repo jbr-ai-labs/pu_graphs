@@ -1,12 +1,10 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict
 
 import dgl
 import hydra_slayer
-import numpy as np
-import sparse
 import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
@@ -20,9 +18,7 @@ from pu_graphs.data.datasets import DglGraphDataset
 from pu_graphs.data.unlabeled_sampler import UnlabeledSampler
 from pu_graphs.data.utils import get_split
 from pu_graphs.debug_utils import DebugDataset
-from pu_graphs.evaluation.callback import EvaluationCallback
-from pu_graphs.evaluation.evaluation import MRRLinkPredictionMetric, \
-    AccuracyLinkPredictionMetric, AdjustedMeanRankIndex, FilteredLinkPredictionMetric
+from pu_graphs.evaluation.callback import evaluation_callback
 from pu_graphs.external_init_wandb_logger import ExternalInitWandbLogger
 from pu_graphs.modeling.complex import ComplEx
 from pu_graphs.modeling.dist_mult import DistMult
@@ -30,44 +26,6 @@ from pu_graphs.modeling.pan_runner import PanRunner, get_pan_loss_by_key, Learna
     SigmoidLogitToProbability
 
 CONFIG_DIR = Path("config")
-
-
-def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool, model_key: Optional[str] = None):
-    full_graph = graphs["train"]
-    eval_graph = graphs[eval_loader_key]
-
-    number_of_nodes = full_graph.number_of_nodes()
-    number_of_relations = eval_graph.edata["etype"].max().item() + 1
-
-    head_idx, tail_idx = full_graph.edges()
-    head_idx = head_idx.numpy()
-    tail_idx = tail_idx.numpy()
-    relation_idx = full_graph.edata["etype"].numpy()
-
-    coordinates = (relation_idx, head_idx, tail_idx)
-    values = np.ones_like(head_idx)
-
-    full_adj_mat = sparse.COO((values, coordinates), shape=[number_of_relations, number_of_nodes, number_of_nodes])
-
-    metrics_builders = {
-        "mrr": lambda suf: MRRLinkPredictionMetric(topk_args=[number_of_nodes], suffix=suf),
-        "acc": lambda suf: AccuracyLinkPredictionMetric(topk_args=[1, 3, 5, 10, 20], suffix=suf),
-        "amri": lambda suf: AdjustedMeanRankIndex(topk_args=[full_graph.number_of_nodes()], suffix=suf)
-    }
-
-    metrics = {}
-    for k, v in metrics_builders.items():
-        metrics[k] = v("")
-        metrics[f"{k}_filtered"] = FilteredLinkPredictionMetric(metric=v("_filtered"), full_adj_mat=full_adj_mat)
-
-    return EvaluationCallback(
-        graph=eval_graph,
-        metrics=metrics,
-        loader=loaders[eval_loader_key],
-        loader_key=eval_loader_key,
-        is_debug=is_debug,
-        model_key=model_key
-    )
 
 
 def nested_yaml_resolver(name, *, _root_, _parent_, _node_):
