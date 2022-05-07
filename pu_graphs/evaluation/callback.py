@@ -35,7 +35,7 @@ class EvaluationCallback(dl.Callback):
         self.eval_every_epoch = eval_every_epoch
         self.model_key = model_key
         self.was_called = False  # FIXME: some internal catalyst problems
-        super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.ExternalExtra, node=dl.CallbackNode.Master)
+        super(EvaluationCallback, self).__init__(order=dl.CallbackOrder.Metric, node=dl.CallbackNode.Master)
 
     def _compute_score(self, runner, head_idx, relation_idx):
         model = runner.model if self.model_key is None else runner.model[self.model_key]
@@ -92,6 +92,7 @@ class EvaluationCallback(dl.Callback):
         self._reset_metrics()
 
         metrics = flatten_dict(self._compute_metrics(runner))
+        runner.epoch_metrics[runner.loader_key].update(metrics)
         self._log_metrics(runner, metrics)
 
     def on_experiment_end(self, runner: dl.IRunner) -> None:

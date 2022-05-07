@@ -170,20 +170,24 @@ def main():
     wandb_run = init_run(config=plain_config)
     run_name = wandb_run.name or config["run_name"]
     logdir = Path("./logdir") / run_name
+
+    eval_metric_key = "mrr_filtered"
+    eval_metric_minimize = False
+
     callbacks = {
         **init_opt_callbacks(PanRunner.DISC_KEY),
         **init_opt_callbacks(PanRunner.CLS_KEY),
         "early_stopping": dl.EarlyStoppingCallback(
             patience=config["patience"],
             loader_key="valid",
-            metric_key=PanRunner.LOSS_DISC_KEY,  # TODO: replace with MRR,
-            minimize=True
+            metric_key=eval_metric_key,
+            minimize=eval_metric_minimize
         ),
         "checkpoint": dl.CheckpointCallback(
             logdir=logdir.joinpath("checkpoints").__str__(),
             loader_key="valid",
-            metric_key=PanRunner.LOSS_DISC_KEY,
-            minimize=True,
+            metric_key=eval_metric_key,
+            minimize=eval_metric_minimize,
             load_on_stage_end="best"
         ),
         "valid_eval": evaluation_callback(
