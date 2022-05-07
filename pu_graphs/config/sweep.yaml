@@ -13,16 +13,11 @@ parameters:
   dataset:
     value: "WN18RR"
   model:
-    values:
-      - "distmult"
-      - "complex"
+    value: "complex"
   alpha:
     values:
       - 0.0001
       - 0.001
       - 0.01
-      - 0.1
   logit_to_prob:
-    values:
-      - "sigmoid"
-      - "learnable"
+    value: "sigmoid"
