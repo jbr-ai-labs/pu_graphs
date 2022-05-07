@@ -93,6 +93,14 @@ def get_pan_loss_by_key(key: str, alpha: float) -> PanLoss:
     raise ValueError(f"Unexpected value for PanLoss key: {key}")
 
 
+def forward_batch(model, batch):
+    return model(
+        head_indices=batch[keys.head_idx],
+        tail_indices=batch[keys.tail_idx],
+        relation_indices=batch[keys.rel_idx]
+    )
+
+
 class PanRunner(dl.Runner):
 
     DISC_KEY = "disc"
@@ -145,29 +153,13 @@ class PanRunner(dl.Runner):
     def discriminator_step(self, batch):
         # noinspection PyTypeChecker
         unlabeled_data = any2device(
-            self.unlabeled_sampler.sample_for_batch(batch),
-            self.device
+            self.unlabeled_sampler.sample_for_batch(batch), self.device
         )
 
-        # Positive examples pass
-        disc_positive_probs = self.discriminator(
-            head_indices=batch[keys.head_idx],
-            tail_indices=batch[keys.tail_idx],
-            relation_indices=batch[keys.rel_idx]
-        )
-
-        disc_unlabeled_probs = self.discriminator(
-            head_indices=unlabeled_data[keys.head_idx],
-            tail_indices=unlabeled_data[keys.tail_idx],
-            relation_indices=unlabeled_data[keys.rel_idx]
-        )
-
+        disc_positive_probs = forward_batch(self.discriminator, batch)
+        disc_unlabeled_probs = forward_batch(self.discriminator, unlabeled_data)
         with torch.no_grad():
-            cls_unlabeled_probs = self.classifier(
-                head_indices=unlabeled_data[keys.head_idx],
-                tail_indices=unlabeled_data[keys.tail_idx],
-                relation_indices=unlabeled_data[keys.rel_idx]
-            )
+            cls_unlabeled_probs = forward_batch(self.classifier, unlabeled_data)
 
         self.batch.update(
             {
@@ -182,22 +174,12 @@ class PanRunner(dl.Runner):
     def classifier_step(self):
         # noinspection PyTypeChecker
         unlabeled_data = any2device(
-            self.unlabeled_sampler.sample_n_examples(self.batch_size),
-            self.device
+            self.unlabeled_sampler.sample_n_examples(self.batch_size), self.device
         )
 
         with torch.no_grad():
-            disc_unlabeled_probs = self.discriminator(
-                head_indices=unlabeled_data[keys.head_idx],
-                tail_indices=unlabeled_data[keys.tail_idx],
-                relation_indices=unlabeled_data[keys.rel_idx]
-            )
-
-        cls_unlabeled_probs = self.classifier(
-            head_indices=unlabeled_data[keys.head_idx],
-            tail_indices=unlabeled_data[keys.tail_idx],
-            relation_indices=unlabeled_data[keys.rel_idx]
-        )
+            disc_unlabeled_probs = forward_batch(self.discriminator, unlabeled_data)
+        cls_unlabeled_probs = forward_batch(self.classifier, unlabeled_data)
 
         self.batch.update({
             keys.disc_unlabeled_probs: disc_unlabeled_probs,
