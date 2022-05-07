@@ -3,6 +3,7 @@ from typing import Mapping, Any
 
 import torch
 from catalyst import dl
+from catalyst.utils.torch import any2device
 from torch import nn
 
 from pu_graphs.data import keys
@@ -142,7 +143,11 @@ class PanRunner(dl.Runner):
             self.classifier_step()
 
     def discriminator_step(self, batch):
-        unlabeled_data = self.unlabeled_sampler.sample_for_batch(batch)
+        # noinspection PyTypeChecker
+        unlabeled_data = any2device(
+            self.unlabeled_sampler.sample_for_batch(batch),
+            self.device
+        )
 
         # Positive examples pass
         disc_positive_probs = self.discriminator(
@@ -175,7 +180,11 @@ class PanRunner(dl.Runner):
         self._optimize(PanRunner.DISC_KEY)
 
     def classifier_step(self):
-        unlabeled_data = self.unlabeled_sampler.sample_n_examples(self.batch_size)
+        # noinspection PyTypeChecker
+        unlabeled_data = any2device(
+            self.unlabeled_sampler.sample_n_examples(self.batch_size),
+            self.device
+        )
 
         with torch.no_grad():
             disc_unlabeled_probs = self.discriminator(
