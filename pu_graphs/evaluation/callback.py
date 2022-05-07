@@ -121,7 +121,14 @@ class EvaluationCallback(dl.Callback):
             m.reset()
 
 
-def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool, model_key: ty.Optional[str] = None):
+def evaluation_callback(
+    graphs,
+    loaders,
+    eval_loader_key: str,
+    is_debug: bool,
+    model_key: ty.Optional[str] = None,
+    eval_every_epoch: bool = False
+) -> EvaluationCallback:
     full_graph = graphs["train"]
     eval_graph = graphs[eval_loader_key]
 
@@ -155,5 +162,6 @@ def evaluation_callback(graphs, loaders, eval_loader_key: str, is_debug: bool, m
         loader=loaders[eval_loader_key],
         loader_key=eval_loader_key,
         is_debug=is_debug,
-        model_key=model_key
+        model_key=model_key,
+        eval_every_epoch=eval_every_epoch
     )

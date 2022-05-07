@@ -191,7 +191,8 @@ def main():
             loaders=loaders,
             eval_loader_key="valid",
             is_debug=is_debug,
-            model_key=PanRunner.DISC_KEY
+            model_key=PanRunner.DISC_KEY,
+            eval_every_epoch=config["eval_every_epoch"]
         ),
         "test_eval": evaluation_callback(
             graphs=graphs,
