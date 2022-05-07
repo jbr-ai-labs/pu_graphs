@@ -8,15 +8,14 @@ optimizer:
   _mode_: partial
   lr: 0.0001
 
-alpha: 0.2
+alpha: 0.0001
 logit_to_prob: "sigmoid"
 
-dataset: "FB15k237"
+dataset: "WN18RR"
 model: "complex"
-batch_size: 64
+batch_size: 16
 eval_batch_size: 4
-embedding_dim: 4
+embedding_dim: 100
 
 num_epochs: 50
 patience: 5
-

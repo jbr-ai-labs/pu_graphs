@@ -1,8 +1,8 @@
 project: pu_graphs
 entity: hse-jbr-ai
-sweep: loss-sweep-debug
+sweep: pan-WN18RR
 
-program: main.py
+program: main_pan.py
 
 metric:
   name: mrr_filtered_epoch/test
@@ -10,13 +10,18 @@ metric:
 
 method: grid
 parameters:
+  dataset:
+    value: "WN18RR"
+  model:
+    values:
+      - "distmult"
+      - "complex"
   alpha:
     values:
       - 0.0001
       - 0.001
       - 0.01
       - 0.1
-      - 1.0
   logit_to_prob:
     values:
       - "sigmoid"
