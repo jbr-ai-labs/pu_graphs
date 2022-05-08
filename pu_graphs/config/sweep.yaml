@@ -1,6 +1,6 @@
 project: pu_graphs
 entity: hse-jbr-ai
-sweep: pan-WN18RR
+name: pan-FB15k237-grad-clip
 
 program: main_pan.py
 
@@ -15,12 +15,13 @@ parameters:
   model:
     value: "complex"
   alpha:
-    value: 0.01
-  max_norm:
+    value: 0.001
+  grad_clip_max_norm:
     values:
       - 1.0
       - 2.0
-      - 3.0
+      - 5.0
+      - 10.0
   eval_metric_key:
     values:
       - "mrr_filtered"
