@@ -61,7 +61,7 @@ def init_opt_callbacks(key: str, config) -> Dict[str, dl.Callback]:
 
     # noinspection PyTypeChecker
     grad_clip_args: Dict[str, Any] = {}
-    if grad_clip_max_norm := config.get("grad_clip_max_norm") is not None:
+    if (grad_clip_max_norm := config.get("grad_clip_max_norm")) is not None:
         assert isinstance(grad_clip_max_norm, (int, float)), \
             "grad_clip_max_norm is expected to be of numeric type"
 
