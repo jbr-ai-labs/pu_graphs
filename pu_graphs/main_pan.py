@@ -138,6 +138,11 @@ def main():
             model_cls = ComplEx
         else:
             raise ValueError(f"No such model as {config['model']}")
+
+        # debug print:
+        if max_norm := kwargs.get("max_norm") is not None:
+            print(f"max_norm = f{max_norm}")
+
         model = model_cls(*args, **kwargs)
 
         logit_to_prob = "logit_to_prob"
@@ -153,7 +158,8 @@ def main():
         k: model_builder(
             n_nodes=full_graph.number_of_nodes(),
             n_relations=graphs["train"].edata["etype"].max().item() + 1,
-            embedding_dim=config["embedding_dim"]
+            embedding_dim=config["embedding_dim"],
+            max_norm=config.get("max_norm", None)
         ) for k in pan_keys
     })
 

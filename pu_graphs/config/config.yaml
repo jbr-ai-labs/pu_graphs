@@ -19,4 +19,4 @@ eval_every_epoch: True
 embedding_dim: 100
 
 num_epochs: 50
-patience: 5
+patience: 7

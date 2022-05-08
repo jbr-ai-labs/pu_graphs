@@ -15,9 +15,11 @@ parameters:
   model:
     value: "complex"
   alpha:
+    value: 0.01
+  max_norm:
     values:
-      - 0.0001
-      - 0.001
-      - 0.01
+      - 1.0
+      - 2.0
+      - 3.0
   logit_to_prob:
     value: "sigmoid"
