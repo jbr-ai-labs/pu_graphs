@@ -1,10 +1,11 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any
 
 import dgl
 import hydra_slayer
+import torch.nn.utils
 import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
@@ -48,7 +49,7 @@ def init_run(config):
     return sweep_run
 
 
-def init_opt_callbacks(key: str) -> Dict[str, dl.Callback]:
+def init_opt_callbacks(key: str, config) -> Dict[str, dl.Callback]:
     if key == PanRunner.DISC_KEY:
         metric_key = PanRunner.LOSS_DISC_KEY
         input_key = [keys.disc_positive_probs, keys.disc_unlabeled_probs, keys.cls_unlabeled_probs]
@@ -59,6 +60,22 @@ def init_opt_callbacks(key: str) -> Dict[str, dl.Callback]:
         raise ValueError(f"key: {key}")
 
     # noinspection PyTypeChecker
+    grad_clip_args: Dict[str, Any] = {}
+    if grad_clip_max_norm := config.get("grad_clip_max_norm") is not None:
+        assert isinstance(grad_clip_max_norm, (int, float)), \
+            "grad_clip_max_norm is expected to be of numeric type"
+
+        grad_clip_args.update({
+            "grad_clip_fn": torch.nn.utils.clip_grad_norm,
+            "grad_clip_params": {
+                "max_norm": grad_clip_max_norm
+            }
+        })
+
+        print("Initialized grad clipping params")
+    else:
+        print("Skipping grap clipping params initialization")
+
     callbacks = {
         PanRunner.criterion_key(key): ManualCriterionCallback(
             input_key=input_key,
@@ -69,7 +86,8 @@ def init_opt_callbacks(key: str) -> Dict[str, dl.Callback]:
         PanRunner.optimizer_key(key): ManualOptimizerCallback(
             metric_key=metric_key,
             model_key=key,
-            optimizer_key=key
+            optimizer_key=key,
+            **grad_clip_args
         )
     }
 
@@ -168,6 +186,10 @@ def main():
 
         # debug print:
         max_norm = kwargs.get("max_norm")
+        if max_norm is not None:
+            assert isinstance(max_norm, (int, float)), \
+                "max_norm is expected to be of numeric type"
+
         print(f"max_norm = {max_norm}")
 
         model = model_cls(*args, **kwargs)
