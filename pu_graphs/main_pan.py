@@ -227,8 +227,8 @@ def main():
     logdir = Path("./logdir") / run_name
 
     callbacks = {
-        **init_opt_callbacks(PanRunner.DISC_KEY),
-        **init_opt_callbacks(PanRunner.CLS_KEY),
+        **init_opt_callbacks(PanRunner.DISC_KEY, config),
+        **init_opt_callbacks(PanRunner.CLS_KEY, config),
         **init_checkpoint_and_early_stop_callbacks(config, logdir),
         "valid_eval": evaluation_callback(
             graphs=graphs,
