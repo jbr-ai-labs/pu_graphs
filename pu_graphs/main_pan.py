@@ -167,8 +167,8 @@ def main():
             raise ValueError(f"No such model as {config['model']}")
 
         # debug print:
-        if max_norm := kwargs.get("max_norm") is not None:
-            print(f"max_norm = f{max_norm}")
+        max_norm = kwargs.get("max_norm")
+        print(f"max_norm = {max_norm}")
 
         model = model_cls(*args, **kwargs)
 
