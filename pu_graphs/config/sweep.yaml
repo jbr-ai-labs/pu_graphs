@@ -21,5 +21,9 @@ parameters:
       - 1.0
       - 2.0
       - 3.0
+  eval_metric_key:
+    values:
+      - "mrr_filtered"
+      - "loss_disc"
   logit_to_prob:
     value: "sigmoid"

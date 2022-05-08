@@ -76,6 +76,33 @@ def init_opt_callbacks(key: str) -> Dict[str, dl.Callback]:
     return callbacks
 
 
+def init_checkpoint_and_early_stop_callbacks(config, logdir: Path) -> Dict[str, dl.Callback]:
+    eval_metric_key: str = config["eval_metric_key"]
+    if eval_metric_key.startswith("loss"):
+        eval_metric_minimize = True
+    elif eval_metric_key.startswith("mrr"):
+        eval_metric_minimize = False
+    else:
+        raise ValueError(f"Not sure if eval metric should be maximized or minimized: eval_metric_key={eval_metric_key}")
+    print(f"Debug: eval_metric_key={eval_metric_key}, eval_metric_minimize={eval_metric_minimize}")
+
+    return {
+        "early_stopping": dl.EarlyStoppingCallback(
+            patience=config["patience"],
+            loader_key="valid",
+            metric_key=eval_metric_key,
+            minimize=eval_metric_minimize
+        ),
+        "checkpoint": dl.CheckpointCallback(
+            logdir=logdir.joinpath("checkpoints").__str__(),
+            loader_key="valid",
+            metric_key=eval_metric_key,
+            minimize=eval_metric_minimize,
+            load_on_stage_end="best"
+        ),
+    }
+
+
 def main():
     OmegaConf.register_new_resolver("nested_yaml", nested_yaml_resolver)
     oc_config = OmegaConf.load(CONFIG_DIR / "config.yaml")
@@ -177,25 +204,10 @@ def main():
     run_name = wandb_run.name or config["run_name"]
     logdir = Path("./logdir") / run_name
 
-    eval_metric_key = "mrr_filtered"
-    eval_metric_minimize = False
-
     callbacks = {
         **init_opt_callbacks(PanRunner.DISC_KEY),
         **init_opt_callbacks(PanRunner.CLS_KEY),
-        "early_stopping": dl.EarlyStoppingCallback(
-            patience=config["patience"],
-            loader_key="valid",
-            metric_key=eval_metric_key,
-            minimize=eval_metric_minimize
-        ),
-        "checkpoint": dl.CheckpointCallback(
-            logdir=logdir.joinpath("checkpoints").__str__(),
-            loader_key="valid",
-            metric_key=eval_metric_key,
-            minimize=eval_metric_minimize,
-            load_on_stage_end="best"
-        ),
+        **init_checkpoint_and_early_stop_callbacks(config, logdir),
         "valid_eval": evaluation_callback(
             graphs=graphs,
             loaders=loaders,
