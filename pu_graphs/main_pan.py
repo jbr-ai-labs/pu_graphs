@@ -66,13 +66,14 @@ def init_opt_callbacks(key: str, config) -> Dict[str, dl.Callback]:
             "grad_clip_max_norm is expected to be of numeric type"
 
         grad_clip_args.update({
-            "grad_clip_fn": torch.nn.utils.clip_grad_norm,
+            "grad_clip_fn": torch.nn.utils.clip_grad_norm_,
             "grad_clip_params": {
                 "max_norm": grad_clip_max_norm
             }
         })
 
         print("Initialized grad clipping params")
+        print(f"grad_clip: max_norm = {grad_clip_max_norm}")
     else:
         print("Skipping grap clipping params initialization")
 
