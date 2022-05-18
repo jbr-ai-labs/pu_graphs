@@ -1,6 +1,6 @@
 project: pu_graphs
 entity: hse-jbr-ai
-name: pan-FB15k237-grad-clip
+name: pan-WN18RR-dist-loss
 
 program: main_pan.py
 
@@ -14,17 +14,18 @@ parameters:
     value: "WN18RR"
   model:
     value: "complex"
+  max_norm:
+    value: 3.0
+  pan_mode: "DIST"
   alpha:
-    value: 0.001
-  grad_clip_max_norm:
     values:
+      - 0.0001
+      - 0.001
+      - 0.01
+  margin:
+    values:
+      - 0.5
       - 1.0
-      - 2.0
-      - 5.0
-      - 10.0
+      - 1.5
   eval_metric_key:
-    values:
-      - "mrr_filtered"
-      - "loss_disc"
-  logit_to_prob:
-    value: "sigmoid"
+    value: "mrr_filtered"

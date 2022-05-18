@@ -1,5 +1,5 @@
 import abc
-from typing import Mapping, Any
+from typing import Mapping, Any, Optional
 
 import torch
 from catalyst import dl
@@ -44,11 +44,19 @@ class LearnableLogitToProbability(LogitToProbability):
         return self.forward_logit(*args, **kwargs).sigmoid()
 
 
-class PanLoss(nn.Module):
+class BasePanLoss(abc.ABC, nn.Module):
 
     def __init__(self, alpha: float):
-        super(PanLoss, self).__init__()
+        super(BasePanLoss, self).__init__()
         self.alpha = alpha
+
+    @staticmethod
+    @abc.abstractmethod
+    def _cls_term(disc_unlabeled_probs, cls_unlabeled_probs):
+        pass
+
+
+class PanLoss(BasePanLoss):
 
     @staticmethod
     def _cls_term(disc_unlabeled_probs, cls_unlabeled_probs):
@@ -78,19 +86,111 @@ class PanClassifierLoss(PanLoss):
         ).sum()
         return loss
 
+
+class PanDistanceLoss(BasePanLoss):
+
     @staticmethod
     def _cls_term(disc_unlabeled_probs, cls_unlabeled_probs):
-        return (
-            (1 - cls_unlabeled_probs).log() - cls_unlabeled_probs.log()
-        ) * (2 * disc_unlabeled_probs - 1)
+        return (disc_unlabeled_probs - cls_unlabeled_probs).pow(2).sum()
 
 
-def get_pan_loss_by_key(key: str, alpha: float) -> PanLoss:
-    if key == PanRunner.DISC_KEY:
-        return PanDiscriminatorLoss(alpha)
-    if key == PanRunner.CLS_KEY:
-        return PanClassifierLoss(alpha)
-    raise ValueError(f"Unexpected value for PanLoss key: {key}")
+class PanDiscriminatorDistanceLoss(PanDistanceLoss):
+
+    def __init__(self, alpha: float, margin: float):
+        super(PanDiscriminatorDistanceLoss, self).__init__(alpha = alpha)
+        self.margin = margin
+
+    def forward(self, disc_positive_probs, disc_unlabeled_probs, cls_unlabeled_probs):
+        score_distance = disc_unlabeled_probs.unsqueeze(-1) - disc_positive_probs
+        score_distance.add_(self.margin)
+        disc_term = score_distance.maximum(torch.tensor(0)).sum()
+
+        # Discriminator aims to minimize term 1 and maximize MSE to CLS
+        return disc_term - self.alpha * self._cls_term(
+            disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
+        )
+
+
+class PanClassifierDistanceLoss(PanDistanceLoss):
+
+    def forward(self, disc_unlabeled_probs, cls_unlabeled_probs):
+        # Classifier aims to minimize MSE
+        return self.alpha * self._cls_term(
+            disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
+        )
+
+
+class PanListLoss(BasePanLoss):
+
+    @staticmethod
+    def _cls_term(disc_unlabeled_probs, cls_unlabeled_probs):
+        return - torch.sum(
+            disc_unlabeled_probs.softmax(dim=-1) * cls_unlabeled_probs.log_softmax(dim=-1)
+        )
+
+
+class PanDiscriminatorListLoss(PanListLoss):
+
+    def forward(self, disc_positive_probs, disc_unlabeled_probs, cls_unlabeled_probs):
+        logits = torch.cat([disc_positive_probs, disc_unlabeled_probs], dim=-1)
+        target = torch.cat([
+            torch.ones_like(disc_positive_probs),
+            torch.zeros_like(disc_unlabeled_probs)
+        ], dim=-1)
+        bce = torch.nn.functional.binary_cross_entropy_with_logits(input=logits, target=target)
+        # Aim is to minimize CE with P and maximize CE with C
+        return bce - self.alpha * self._cls_term(
+            disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
+        )
+
+
+class PanClassifierListLoss(PanListLoss):
+
+    def forward(self, disc_unlabeled_probs, cls_unlabeled_probs):
+        # Aim is to minimize CE
+        return self.alpha * self._cls_term(
+            disc_unlabeled_probs=disc_unlabeled_probs, cls_unlabeled_probs=cls_unlabeled_probs
+        )
+
+
+def get_pan_loss_by_key(mode: str, key: str, alpha: float, margin: Optional[float]) -> BasePanLoss:
+
+    def get_pan_kl_loss_by_key() -> PanLoss:
+        print(f"Initializing KL loss for {key}")
+
+        if key == PanRunner.DISC_KEY:
+            return PanDiscriminatorLoss(alpha)
+        if key == PanRunner.CLS_KEY:
+            return PanClassifierLoss(alpha)
+        raise ValueError(f"Unexpected value for PanLoss key: {key}")
+
+    def get_pan_distance_loss_by_key() -> PanDistanceLoss:
+        if not isinstance(margin, float):
+            raise ValueError("Provide margin parameter gamma")
+
+        print(f"Initializing distance loss for {key}")
+        if key == PanRunner.DISC_KEY:
+            return PanDiscriminatorDistanceLoss(alpha=alpha, margin=margin)
+        if key == PanRunner.CLS_KEY:
+            return PanClassifierDistanceLoss(alpha)
+        raise ValueError(f"Unexpected value for PanLoss key: {key}")
+
+    def get_pan_list_loss_by_key() -> PanListLoss:
+        print(f"Initializing list loss for {key}")
+
+        if key == PanRunner.DISC_KEY:
+            return PanDiscriminatorListLoss(alpha=alpha)
+        if key == PanRunner.CLS_KEY:
+            return PanClassifierListLoss(alpha)
+        raise ValueError(f"Unexpected value for PanLoss key: {key}")
+
+    if mode == "KL":
+        return get_pan_kl_loss_by_key()
+    if mode == "DIST":
+        return get_pan_distance_loss_by_key()
+    if mode == "LIST":
+        return get_pan_list_loss_by_key()
+    raise ValueError(f"Unexpected mode value: {mode}")
 
 
 def forward_batch(model, batch):

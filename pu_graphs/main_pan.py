@@ -195,10 +195,13 @@ def main():
 
         model = model_cls(*args, **kwargs)
 
-        logit_to_prob = "logit_to_prob"
-        if config[logit_to_prob] == "learnable":
+        logit_to_prob = config.get("logit_to_prob", None)
+        if logit_to_prob is None:
+            print("No logit_to_prob provided")
+            return model
+        if logit_to_prob == "learnable":
             return LearnableLogitToProbability(model)
-        elif config[logit_to_prob] == "sigmoid":
+        if logit_to_prob == "sigmoid":
             return SigmoidLogitToProbability(model)
         raise ValueError(f"Unsupported logit_to_prob value: {logit_to_prob}")
 
@@ -219,7 +222,7 @@ def main():
     }
 
     criterion = {
-        k: get_pan_loss_by_key(k, config["alpha"])
+        k: get_pan_loss_by_key(config["pan_mode"], k, config["alpha"], margin=config.get("margin", None))
         for k in pan_keys
     }
 
