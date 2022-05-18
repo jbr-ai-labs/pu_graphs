@@ -16,7 +16,8 @@ parameters:
     value: "complex"
   max_norm:
     value: 3.0
-  pan_mode: "DIST"
+  pan_mode:
+    value: "DIST"
   alpha:
     values:
       - 0.0001
