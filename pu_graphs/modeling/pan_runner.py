@@ -165,7 +165,7 @@ def get_pan_loss_by_key(mode: str, key: str, alpha: float, margin: Optional[floa
         raise ValueError(f"Unexpected value for PanLoss key: {key}")
 
     def get_pan_distance_loss_by_key() -> PanDistanceLoss:
-        if not isinstance(margin, float):
+        if not isinstance(margin, (int, float)):
             raise ValueError("Provide margin parameter gamma")
 
         print(f"Initializing distance loss for {key}")
