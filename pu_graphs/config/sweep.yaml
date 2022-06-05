@@ -1,0 +1,32 @@
+project: pu_graphs
+entity: hse-jbr-ai
+name: pan-WN18RR-dist-loss
+
+program: main_pan.py
+
+metric:
+  name: mrr_filtered_epoch/test
+  goal: maximize
+
+method: grid
+parameters:
+  dataset:
+    value: "WN18RR"
+  model:
+    value: "complex"
+  max_norm:
+    value: 3.0
+  pan_mode:
+    value: "DIST"
+  alpha:
+    values:
+      - 0.0001
+      - 0.001
+      - 0.01
+  margin:
+    values:
+      - 0.5
+      - 1.0
+      - 1.5
+  eval_metric_key:
+    value: "mrr_filtered"

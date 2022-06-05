@@ -1,0 +1,27 @@
+run_name: pan
+
+seed: 19
+is_debug: True
+
+optimizer:
+  _target_: torch.optim.Adam
+  _mode_: partial
+  lr: 0.0001
+
+alpha: 0.0001
+
+pan_mode: "DIST"
+margin: 1.0
+
+dataset: "WN18RR"
+model: "complex"
+batch_size: 16
+embedding_dim: 100
+
+num_epochs: 50
+
+eval_batch_size: 4
+eval_metric_key: "mrr_filtered"
+eval_every_epoch: True
+
+patience: 7

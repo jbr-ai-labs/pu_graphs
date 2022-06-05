@@ -1,0 +1,2 @@
+_target_: pu_graphs.modeling.loss.MarginBasedLoss
+margin: 1.0
