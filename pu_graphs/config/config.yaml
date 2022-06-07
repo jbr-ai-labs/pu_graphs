@@ -8,10 +8,7 @@ optimizer:
   _mode_: partial
   lr: 0.0001
 
-alpha: 0.0001
-
-pan_mode: "DIST"
-margin: 1.0
+criterion: "${nested_yaml:margin-loss.yaml}"
 
 dataset: "WN18RR"
 model: "complex"
@@ -24,4 +21,4 @@ eval_batch_size: 4
 eval_metric_key: "mrr_filtered"
 eval_every_epoch: True
 
-patience: 7
+patience: 15

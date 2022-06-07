@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -58,8 +59,8 @@ def main():
     config = hydra_slayer.get_from_params(**plain_config)
     is_debug = config["is_debug"]
 
-    #if is_debug:
-    #    os.environ["WANDB_MODE"] = "dryrun"
+    if is_debug:
+        os.environ["WANDB_MODE"] = "dryrun"
 
     set_global_seed(config["seed"])
 
