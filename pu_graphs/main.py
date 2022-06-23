@@ -3,6 +3,7 @@ from pathlib import Path
 
 import dgl
 import hydra_slayer
+from pu_graphs.data.datasetPolypharmacy import PolypharmacyDataset
 import wandb
 from catalyst import dl
 from catalyst.utils import set_global_seed
@@ -67,6 +68,8 @@ def main():
         dataset = dgl.data.FB15k237Dataset()
     elif config['dataset'] == 'WN18RR':
         dataset = WN18RRDataset()
+    elif config['dataset'] == 'Polypharmacy':
+        dataset = PolypharmacyDataset()
     else:
         print(f"No such dataset as {config['dataset']}")
         return
