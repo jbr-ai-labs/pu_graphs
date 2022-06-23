@@ -1,7 +1,7 @@
 from distutils.command.build import build
 import os
 import gzip
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 
 import dgl
@@ -20,12 +20,12 @@ class PolypharmacyDataConstants:
     datapath: str = "data"
     url: str = "http://snap.stanford.edu/biodata/datasets/10017/files/ChChSe-Decagon_polypharmacy.csv.gz"
     download_folder: str = "/downloads"
-    txt_dir: str = "/polypharmacy/text"
+    txt_dir: str = "/polypharmacy"
     data_file: str = "/data.csv"
     save_dir: str = "/polypharmacy_data"
     graph_file: str = "/dgl_graph.bin"
     info_file: str = "/info.pkl"
-    split_ration: float = 0.1
+    split_ratio: float = 0.1
     min_split_size: int = 50
 
 
@@ -52,8 +52,8 @@ class PolypharmacyDataset(DGLDataset):
 
         self.reversed = reversed
         self.min_split_size = PolypharmacyDataConstants.min_split_size // 2 if reversed else PolypharmacyDataConstants.min_split_size
-        self.polypharmacy_path = os.path.abspath(raw_dir)
-        self.path_data = self.polypharmacy_path + PolypharmacyDataConstants.txt_dir + PolypharmacyDataConstants.data_file
+        self.polypharmacy_path = os.path.abspath(raw_dir) + PolypharmacyDataConstants.txt_dir
+        self.path_data = self.polypharmacy_path + PolypharmacyDataConstants.data_file
         super(PolypharmacyDataset, self).__init__(name='Polypharmacy',
                                                   url=PolypharmacyDataConstants.url,
                                                   raw_dir=raw_dir,
@@ -70,16 +70,16 @@ class PolypharmacyDataset(DGLDataset):
             resp = requests.get(self.url, allow_redirects=True)
             gzipfl = gzip.GzipFile(fileobj=BytesIO(resp.content))
 
-            os.mknod(self.path_data)
+            # os.mknod(self.path_data)
             with open(self.path_data, 'w') as file:
                 for row in gzipfl.readlines():
                     file.write(row.decode())
 
-    def _split_data(self, df, edge_col_id: int):
+    def _split_data(self, df):
         df_train_list, df_valid_list, df_test_list = [], [], []
-        for edge in set(df[edge_col_id]):
+        for edge in set(df[1]):
 
-            train_edge, valid_edge, test_edge = self._split_by_edge_type(df[df[edge_col_id] == edge])
+            train_edge, valid_edge, test_edge = self._split_by_edge_type(df[df[1] == edge])
             df_train_list.append(train_edge)
             df_valid_list.append(valid_edge)
             df_test_list.append(test_edge)
@@ -92,7 +92,7 @@ class PolypharmacyDataset(DGLDataset):
 
     def _split_by_edge_type(self, df):
         num_test = max(self.min_split_size,
-                       int(np.floor(df.shape[0] * self.split_ratio)))
+                       int(np.floor(df.shape[0] * PolypharmacyDataConstants.split_ratio)))
         num_val = num_test
         num_train = df.shape[0] - num_val - num_test
         df = shuffle(df)
@@ -117,38 +117,56 @@ class PolypharmacyDataset(DGLDataset):
 
         """
         reversed_df = df.copy()
-        reversed_df[0] = df[1].copy()
-        reversed_df[1] = df[0].copy()
+        reversed_df[0] = df[2].copy()
+        reversed_df[2] = df[1].copy()
 
-        return pd.concat(df, reversed_df).reset_index(drop=True)
+        return pd.concat([df, reversed_df]).reset_index(drop=True)
 
     def process(self):
         # process raw data to graph
-        df = pd.read_table(self.path_data)
+        df = pd.read_csv(self.path_data)
+        df.drop(columns=[df.columns[3]], inplace=True) 
+
+        #rearrange columns
+        tmp_rel = df[df.columns[2]].copy()
+        df[df.columns[2]] = df[df.columns[1]].copy()
+        df[df.columns[1]] = tmp_rel
+
+        # rename columns
+        cols = [0, 1, 2]
+        df.columns = cols
 
         # create graph
 
         # enumerate nodes
-        orig = list(set(df[0]).union(set(df[1])))
+        orig = list(set(df[0]).union(set(df[2])))
+        print("Num of nodes")
+        print(len(orig))
         df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
         df_enum = df_enum.set_index('original')
         df[0] = df_enum.loc[df[0]].enum.values
-        df[1] = df_enum.loc[df[1]].enum.values
+        df[2] = df_enum.loc[df[2]].enum.values
+
+        print(df[0].max())
+        print(df[2].max())
         self._num_nodes = len(orig)
 
         # enumerate edges
-        orig = list(set(df[2]))
+        orig = list(set(df[1]))
         df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
         df_enum = df_enum.set_index('original')
-        df[2] = df_enum.loc[df[2]].enum.values
+        df[1] = df_enum.loc[df[1]].enum.values
         self._num_rels = df_enum.shape[0]
 
-        df_train, df_valid, df_test = self._split_data(df, 2)
+        df_train, df_valid, df_test = self._split_data(df)
 
         if reversed:
             df_train = self._add_reversed_edges(df_train)
             df_valid = self._add_reversed_edges(df_valid)
             df_test = self._add_reversed_edges(df_test)
+
+
+        print(df_train.head())
 
         # create graph
 
@@ -238,8 +256,19 @@ class PolypharmacyDataset(DGLDataset):
         fg_d = []
         fg_etype = []
         fg_settype = []
+
+        print(type(raw_subg))
+
+        for e_type, val in raw_subg.items():
+            print(e_type)
+            print(val)
+
+            break
+
+
         for e_type, val in raw_subg.items():
             s, d = val
+
             s = np.asarray(s)
             d = np.asarray(d)
             etype = raw_subg_etype[e_type]
@@ -259,7 +288,14 @@ class PolypharmacyDataset(DGLDataset):
 
 
         s = np.concatenate(fg_s)
+        print("----------")
+        print(s.max())     
+
         d = np.concatenate(fg_d)
+
+        print("----------")
+        print(d.max()) 
+
         g = dgl.convert.graph((s, d), num_nodes=num_nodes)
         etype = np.concatenate(fg_etype)
         settype = np.concatenate(fg_settype)
