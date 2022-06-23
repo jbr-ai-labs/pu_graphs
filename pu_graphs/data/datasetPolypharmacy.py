@@ -1,7 +1,6 @@
-from distutils.command.build import build
 import os
 import gzip
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from io import BytesIO
 
 import dgl
@@ -10,9 +9,7 @@ import requests
 import torch
 import numpy as np
 from sklearn.utils import shuffle
-from dgl import save_graphs, load_graphs
 from dgl.data import DGLDataset
-from dgl.data.utils import save_info, load_info
 
 
 @dataclass
@@ -37,9 +34,9 @@ class PolypharmacyDataset(DGLDataset):
     ----------
     url : str
         URL to download the raw dataset
-    force_reload : bool
+    force_reload: bool
         Whether to reload the dataset. Default: False
-    verbose : bool
+    verbose: bool
         Whether to print out progress information
     """
 
@@ -54,6 +51,12 @@ class PolypharmacyDataset(DGLDataset):
         self.min_split_size = PolypharmacyDataConstants.min_split_size // 2 if reversed else PolypharmacyDataConstants.min_split_size
         self.polypharmacy_path = os.path.abspath(raw_dir) + PolypharmacyDataConstants.txt_dir
         self.path_data = self.polypharmacy_path + PolypharmacyDataConstants.data_file
+        self._num_rels = None
+        self._num_nodes = None
+        self._g = None
+        self._train = None
+        self._valid = None
+        self._test = None
         super(PolypharmacyDataset, self).__init__(name='Polypharmacy',
                                                   url=PolypharmacyDataConstants.url,
                                                   raw_dir=raw_dir,
@@ -62,6 +65,10 @@ class PolypharmacyDataset(DGLDataset):
                                                   verbose=verbose)
 
     def download(self):
+        """
+        Download data if it's not presented on a device.
+        """
+
         # download raw data to local disk
         if not os.path.exists(self.polypharmacy_path):
             os.makedirs(self.polypharmacy_path, exist_ok=True)
@@ -70,7 +77,6 @@ class PolypharmacyDataset(DGLDataset):
             resp = requests.get(self.url, allow_redirects=True)
             gzipfl = gzip.GzipFile(fileobj=BytesIO(resp.content))
 
-            # os.mknod(self.path_data)
             with open(self.path_data, 'w') as file:
                 for row in gzipfl.readlines():
                     file.write(row.decode())
@@ -78,7 +84,6 @@ class PolypharmacyDataset(DGLDataset):
     def _split_data(self, df):
         df_train_list, df_valid_list, df_test_list = [], [], []
         for edge in set(df[1]):
-
             train_edge, valid_edge, test_edge = self._split_by_edge_type(df[df[1] == edge])
             df_train_list.append(train_edge)
             df_valid_list.append(valid_edge)
@@ -97,37 +102,25 @@ class PolypharmacyDataset(DGLDataset):
         num_train = df.shape[0] - num_val - num_test
         df = shuffle(df)
         df_train = df[:num_train]
-        df_valid = df[num_train:num_train+num_val]
-        df_test = df[num_train+num_val:]
+        df_valid = df[num_train:num_train + num_val]
+        df_test = df[num_train + num_val:]
 
         return df_train, df_valid, df_test
 
-    def _add_reversed_edges(self, df):
-        """
-        Add reversed edges to dataframe.
-
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframe to add reversed edges to
-
-        Notes
-        -----
-        Polypharmacy graph is undirected, so we don't need to add new edges type to make reverse edges.
-
-        """
-        reversed_df = df.copy()
-        reversed_df[0] = df[2].copy()
-        reversed_df[2] = df[1].copy()
-
-        return pd.concat([df, reversed_df]).reset_index(drop=True)
-
     def process(self):
+        def _add_reversed_edges(dataframe):
+            # Polypharmacy graph is undirected, so we don't need to add new edges type to make reverse edges.
+            reversed_df = dataframe.copy()
+            reversed_df[0] = dataframe[2].copy()
+            reversed_df[2] = dataframe[0].copy()
+
+            return pd.concat([dataframe, reversed_df]).reset_index(drop=True)
+
         # process raw data to graph
         df = pd.read_csv(self.path_data)
-        df.drop(columns=[df.columns[3]], inplace=True) 
+        df.drop(columns=[df.columns[3]], inplace=True)
 
-        #rearrange columns
+        # rearrange columns
         tmp_rel = df[df.columns[2]].copy()
         df[df.columns[2]] = df[df.columns[1]].copy()
         df[df.columns[1]] = tmp_rel
@@ -140,15 +133,11 @@ class PolypharmacyDataset(DGLDataset):
 
         # enumerate nodes
         orig = list(set(df[0]).union(set(df[2])))
-        print("Num of nodes")
-        print(len(orig))
         df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
         df_enum = df_enum.set_index('original')
         df[0] = df_enum.loc[df[0]].enum.values
         df[2] = df_enum.loc[df[2]].enum.values
 
-        print(df[0].max())
-        print(df[2].max())
         self._num_nodes = len(orig)
 
         # enumerate edges
@@ -161,12 +150,9 @@ class PolypharmacyDataset(DGLDataset):
         df_train, df_valid, df_test = self._split_data(df)
 
         if reversed:
-            df_train = self._add_reversed_edges(df_train)
-            df_valid = self._add_reversed_edges(df_valid)
-            df_test = self._add_reversed_edges(df_test)
-
-
-        print(df_train.head())
+            df_train = _add_reversed_edges(df_train)
+            df_valid = _add_reversed_edges(df_valid)
+            df_test = _add_reversed_edges(df_test)
 
         # create graph
 
@@ -198,9 +184,6 @@ class PolypharmacyDataset(DGLDataset):
         graph.edata['test_mask'] = test_mask
 
         # add edge data
-        orig = list(set(df[1]))
-        df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
-        df_enum = df_enum.set_index('original')
         graph.edata['etype'] = etype
 
         self._g = graph
@@ -208,33 +191,27 @@ class PolypharmacyDataset(DGLDataset):
     @staticmethod
     def build_knowledge_graph(num_nodes, num_rels, train, valid, test, reverse=True):
         """
-        DGL funciton for creation a DGL Homogeneous graph with heterograph info stored as node or edge features
+        DGL functions for creation a DGL Homogeneous graph with heterograph info stored as node or edge features
         """
-        src = []
-        rel = []
-        dst = []
         raw_subg = {}
         raw_subg_eset = {}
         raw_subg_etype = {}
-        raw_reverse_sugb = {}
-        raw_reverse_subg_eset = {}
-        raw_reverse_subg_etype = {}
 
-        # here there is noly one node type
+        # there is only one node type
         s_type = "node"
         d_type = "node"
 
-        def add_edge(s, r, d, edge_set):
-            r_type = str(r)
+        def add_edge(source, rel, destination, edge_set):
+            r_type = str(rel)
             e_type = (s_type, r_type, d_type)
             if raw_subg.get(e_type, None) is None:
                 raw_subg[e_type] = ([], [])
                 raw_subg_eset[e_type] = []
                 raw_subg_etype[e_type] = []
-            raw_subg[e_type][0].append(s)
-            raw_subg[e_type][1].append(d)
+            raw_subg[e_type][0].append(source)
+            raw_subg[e_type][1].append(destination)
             raw_subg_eset[e_type].append(edge_set)
-            raw_subg_etype[e_type].append(r)
+            raw_subg_etype[e_type].append(rel)
 
         for edge in train:
             s, r, d = edge
@@ -251,24 +228,13 @@ class PolypharmacyDataset(DGLDataset):
             assert r < num_rels
             add_edge(s, r, d, 3)  # test set
 
-        subg = []
         fg_s = []
         fg_d = []
         fg_etype = []
         fg_settype = []
 
-        print(type(raw_subg))
-
-        for e_type, val in raw_subg.items():
-            print(e_type)
-            print(val)
-
-            break
-
-
         for e_type, val in raw_subg.items():
             s, d = val
-
             s = np.asarray(s)
             d = np.asarray(d)
             etype = raw_subg_etype[e_type]
@@ -286,19 +252,10 @@ class PolypharmacyDataset(DGLDataset):
         valid_edge_mask = torch.tensor(settype == 2)
         test_edge_mask = torch.tensor(settype == 3)
 
-
         s = np.concatenate(fg_s)
-        print("----------")
-        print(s.max())     
-
         d = np.concatenate(fg_d)
-
-        print("----------")
-        print(d.max()) 
-
         g = dgl.convert.graph((s, d), num_nodes=num_nodes)
         etype = np.concatenate(fg_etype)
-        settype = np.concatenate(fg_settype)
         etype = torch.tensor(etype, dtype=torch.int64)
         train_edge_mask = train_edge_mask
         valid_edge_mask = valid_edge_mask
@@ -337,8 +294,3 @@ class PolypharmacyDataset(DGLDataset):
         Passed.
         """
         pass
-
-if __name__ == '__main__':
-    data = PolypharmacyDataset()
-    graph = data[0]
-    print(graph.number_of_nodes())
