@@ -1,6 +1,5 @@
-from distutils.command.build import build
 import os
-import zipfile
+import gzip
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -9,35 +8,35 @@ import pandas as pd
 import requests
 import torch
 import numpy as np
-from dgl import save_graphs, load_graphs
+from sklearn.utils import shuffle
 from dgl.data import DGLDataset
-from dgl.data.utils import save_info, load_info
+
 
 @dataclass
-class WN18RRDataConstants:
+class PolypharmacyDataConstants:
     datapath: str = "data"
-    url: str = "https://data.deepai.org/WN18RR.zip"
+    url: str = "http://snap.stanford.edu/biodata/datasets/10017/files/ChChSe-Decagon_polypharmacy.csv.gz"
     download_folder: str = "/downloads"
-    txt_dir: str = "/WN18RR/text"
-    train_file: str = "/train.txt"
-    valid_file: str = "/valid.txt"
-    test_file: str = "/test.txt"
-    save_dir: str = "/wn18rr_data"
+    txt_dir: str = "/polypharmacy"
+    data_file: str = "/data.csv"
+    save_dir: str = "/polypharmacy_data"
     graph_file: str = "/dgl_graph.bin"
     info_file: str = "/info.pkl"
+    split_ratio: float = 0.1
+    min_split_size: int = 50
 
 
-class WN18RRDataset(DGLDataset):
+class PolypharmacyDataset(DGLDataset):
     """
-    WN18RR dataset in DGL style.
+    Polypharmacy dataset in DGL style.
 
     Parameters
     ----------
     url : str
         URL to download the raw dataset
-    force_reload : bool
+    force_reload: bool
         Whether to reload the dataset. Default: False
-    verbose : bool
+    verbose: bool
         Whether to print out progress information
     """
 
@@ -45,41 +44,90 @@ class WN18RRDataset(DGLDataset):
                  force_reload=False,
                  verbose=False,
                  reversed=False):
-        raw_dir = WN18RRDataConstants.datapath + WN18RRDataConstants.download_folder
-        save_dir = WN18RRDataConstants.datapath + WN18RRDataConstants.save_dir
+        raw_dir = PolypharmacyDataConstants.datapath + PolypharmacyDataConstants.download_folder
+        save_dir = PolypharmacyDataConstants.datapath + PolypharmacyDataConstants.save_dir
 
         self.reversed = reversed
-        self.wn18rr_path = os.path.abspath(raw_dir)
-        self.path_train = self.wn18rr_path + WN18RRDataConstants.txt_dir + WN18RRDataConstants.train_file
-        self.path_valid = self.wn18rr_path + WN18RRDataConstants.txt_dir + WN18RRDataConstants.valid_file
-        self.path_test = self.wn18rr_path + WN18RRDataConstants.txt_dir + WN18RRDataConstants.test_file
-        super(WN18RRDataset, self).__init__(name='WN18RR',
-                                            url=WN18RRDataConstants.url,
-                                            raw_dir=raw_dir,
-                                            save_dir=save_dir,
-                                            force_reload=force_reload,
-                                            verbose=verbose)
+        self.min_split_size = PolypharmacyDataConstants.min_split_size // 2 if reversed else PolypharmacyDataConstants.min_split_size
+        self.polypharmacy_path = os.path.abspath(raw_dir) + PolypharmacyDataConstants.txt_dir
+        self.path_data = self.polypharmacy_path + PolypharmacyDataConstants.data_file
+        self._num_rels = None
+        self._num_nodes = None
+        self._g = None
+        self._train = None
+        self._valid = None
+        self._test = None
+        super(PolypharmacyDataset, self).__init__(name='Polypharmacy',
+                                                  url=PolypharmacyDataConstants.url,
+                                                  raw_dir=raw_dir,
+                                                  save_dir=save_dir,
+                                                  force_reload=force_reload,
+                                                  verbose=verbose)
 
     def download(self):
+        """
+        Download data if it's not presented on a device.
+        """
+
         # download raw data to local disk
-        if not os.path.exists(self.wn18rr_path):
-            os.makedirs(self.wn18rr_path, exist_ok=True)
-    
-        if not (
-                os.path.exists(self.path_train)
-                and os.path.exists(self.path_valid)
-                and os.path.exists(self.path_test)):
+        if not os.path.exists(self.polypharmacy_path):
+            os.makedirs(self.polypharmacy_path, exist_ok=True)
+
+        if not os.path.exists(self.path_data):
             resp = requests.get(self.url, allow_redirects=True)
-            zipfl = zipfile.ZipFile(BytesIO(resp.content))
-            zipfl.extractall(self.wn18rr_path)
+            gzipfl = gzip.GzipFile(fileobj=BytesIO(resp.content))
+
+            with open(self.path_data, 'w') as file:
+                for row in gzipfl.readlines():
+                    file.write(row.decode())
+
+    def _split_data(self, df):
+        df_train_list, df_valid_list, df_test_list = [], [], []
+        for edge in set(df[1]):
+            train_edge, valid_edge, test_edge = self._split_by_edge_type(df[df[1] == edge])
+            df_train_list.append(train_edge)
+            df_valid_list.append(valid_edge)
+            df_test_list.append(test_edge)
+
+        df_train = pd.concat(df_train_list).reset_index(drop=True)
+        df_valid = pd.concat(df_valid_list).reset_index(drop=True)
+        df_test = pd.concat(df_test_list).reset_index(drop=True)
+
+        return df_train, df_valid, df_test
+
+    def _split_by_edge_type(self, df):
+        num_test = max(self.min_split_size,
+                       int(np.floor(df.shape[0] * PolypharmacyDataConstants.split_ratio)))
+        num_val = num_test
+        num_train = df.shape[0] - num_val - num_test
+        df = shuffle(df)
+        df_train = df[:num_train]
+        df_valid = df[num_train:num_train + num_val]
+        df_test = df[num_train + num_val:]
+
+        return df_train, df_valid, df_test
 
     def process(self):
-        # process raw data to graph
-        df_train = pd.read_table(self.path_train, sep='\t', header=None)
-        df_valid = pd.read_table(self.path_valid, sep='\t', header=None)
-        df_test = pd.read_table(self.path_test, sep='\t', header=None)
+        def _add_reversed_edges(dataframe):
+            # Polypharmacy graph is undirected, so we don't need to add new edges type to make reverse edges.
+            reversed_df = dataframe.copy()
+            reversed_df[0] = dataframe[2].copy()
+            reversed_df[2] = dataframe[0].copy()
 
-        df = pd.concat([df_train, df_valid, df_test])
+            return pd.concat([dataframe, reversed_df]).reset_index(drop=True)
+
+        # process raw data to graph
+        df = pd.read_csv(self.path_data)
+        df.drop(columns=[df.columns[3]], inplace=True)
+
+        # rearrange columns
+        tmp_rel = df[df.columns[2]].copy()
+        df[df.columns[2]] = df[df.columns[1]].copy()
+        df[df.columns[1]] = tmp_rel
+
+        # rename columns
+        cols = [0, 1, 2]
+        df.columns = cols
 
         # create graph
 
@@ -89,6 +137,7 @@ class WN18RRDataset(DGLDataset):
         df_enum = df_enum.set_index('original')
         df[0] = df_enum.loc[df[0]].enum.values
         df[2] = df_enum.loc[df[2]].enum.values
+
         self._num_nodes = len(orig)
 
         # enumerate edges
@@ -98,13 +147,17 @@ class WN18RRDataset(DGLDataset):
         df[1] = df_enum.loc[df[1]].enum.values
         self._num_rels = df_enum.shape[0]
 
-        df_train = df.iloc[:len(df_train)]
-        df_valid = df.iloc[len(df_train):len(df_train) + len(df_valid)]
-        df_test = df.iloc[len(df_train) + len(df_valid):len(df_train) + len(df_valid) + len(df_test)]
+        df_train, df_valid, df_test = self._split_data(df)
+
+        if reversed:
+            df_train = _add_reversed_edges(df_train)
+            df_valid = _add_reversed_edges(df_valid)
+            df_test = _add_reversed_edges(df_test)
 
         # create graph
 
-        graph, data = self.build_knowledge_graph(self._num_nodes, self._num_rels, df_train.values, df_valid.values, df_test.values, reverse=self.reversed)
+        graph, data = self.build_knowledge_graph(self._num_nodes, self._num_rels, df_train.values, df_valid.values,
+                                                 df_test.values, reverse=self.reversed)
         etype, ntype, train_edge_mask, valid_edge_mask, test_edge_mask, train_mask, val_mask, test_mask = data
 
         # for compatability
@@ -131,9 +184,6 @@ class WN18RRDataset(DGLDataset):
         graph.edata['test_mask'] = test_mask
 
         # add edge data
-        orig = list(set(df[1]))
-        df_enum = pd.DataFrame({'original': orig, 'enum': list(range(len(orig)))})
-        df_enum = df_enum.set_index('original')
         graph.edata['etype'] = etype
 
         self._g = graph
@@ -141,66 +191,48 @@ class WN18RRDataset(DGLDataset):
     @staticmethod
     def build_knowledge_graph(num_nodes, num_rels, train, valid, test, reverse=True):
         """
-        DGL funciton for creation a DGL Homogeneous graph with heterograph info stored as node or edge features
+        DGL functions for creation a DGL Homogeneous graph with heterograph info stored as node or edge features
         """
-        src = []
-        rel = []
-        dst = []
         raw_subg = {}
         raw_subg_eset = {}
         raw_subg_etype = {}
-        raw_reverse_sugb = {}
-        raw_reverse_subg_eset = {}
-        raw_reverse_subg_etype = {}
 
-        # here there is noly one node type
+        # there is only one node type
         s_type = "node"
         d_type = "node"
 
-        def add_edge(s, r, d, reverse, edge_set):
-            r_type = str(r)
+        def add_edge(source, rel, destination, edge_set):
+            r_type = str(rel)
             e_type = (s_type, r_type, d_type)
             if raw_subg.get(e_type, None) is None:
                 raw_subg[e_type] = ([], [])
                 raw_subg_eset[e_type] = []
                 raw_subg_etype[e_type] = []
-            raw_subg[e_type][0].append(s)
-            raw_subg[e_type][1].append(d)
+            raw_subg[e_type][0].append(source)
+            raw_subg[e_type][1].append(destination)
             raw_subg_eset[e_type].append(edge_set)
-            raw_subg_etype[e_type].append(r)
-
-            if reverse is True:
-                r_type = str(r + num_rels)
-                re_type = (d_type, r_type, s_type)
-                if raw_reverse_sugb.get(re_type, None) is None:
-                    raw_reverse_sugb[re_type] = ([], [])
-                    raw_reverse_subg_etype[re_type] = []
-                    raw_reverse_subg_eset[re_type] = []
-                raw_reverse_sugb[re_type][0].append(d)
-                raw_reverse_sugb[re_type][1].append(s)
-                raw_reverse_subg_eset[re_type].append(edge_set)
-                raw_reverse_subg_etype[re_type].append(r + num_rels)
+            raw_subg_etype[e_type].append(rel)
 
         for edge in train:
             s, r, d = edge
             assert r < num_rels
-            add_edge(s, r, d, reverse, 1) # train set
+            add_edge(s, r, d, 1)  # train set
 
         for edge in valid:
             s, r, d = edge
             assert r < num_rels
-            add_edge(s, r, d, reverse, 2) # valid set
+            add_edge(s, r, d, 2)  # valid set
 
         for edge in test:
             s, r, d = edge
             assert r < num_rels
-            add_edge(s, r, d, reverse, 3) # test set
+            add_edge(s, r, d, 3)  # test set
 
-        subg = []
         fg_s = []
         fg_d = []
         fg_etype = []
         fg_settype = []
+
         for e_type, val in raw_subg.items():
             s, d = val
             s = np.asarray(s)
@@ -216,39 +248,22 @@ class WN18RRDataset(DGLDataset):
             fg_settype.append(settype)
 
         settype = np.concatenate(fg_settype)
-        if reverse is True:
-            settype = np.concatenate([settype, np.full((settype.shape[0]), 0)])
         train_edge_mask = torch.tensor(settype == 1)
         valid_edge_mask = torch.tensor(settype == 2)
         test_edge_mask = torch.tensor(settype == 3)
-
-        for e_type, val in raw_reverse_sugb.items():
-            s, d = val
-            s = np.asarray(s)
-            d = np.asarray(d)
-            etype = raw_reverse_subg_etype[e_type]
-            etype = np.asarray(etype)
-            settype = raw_reverse_subg_eset[e_type]
-            settype = np.asarray(settype)
-
-            fg_s.append(s)
-            fg_d.append(d)
-            fg_etype.append(etype)
-            fg_settype.append(settype)
 
         s = np.concatenate(fg_s)
         d = np.concatenate(fg_d)
         g = dgl.convert.graph((s, d), num_nodes=num_nodes)
         etype = np.concatenate(fg_etype)
-        settype = np.concatenate(fg_settype)
         etype = torch.tensor(etype, dtype=torch.int64)
         train_edge_mask = train_edge_mask
         valid_edge_mask = valid_edge_mask
         test_edge_mask = test_edge_mask
-        train_mask = torch.tensor(settype == 1) if reverse is True else train_edge_mask
-        valid_mask = torch.tensor(settype == 2) if reverse is True else valid_edge_mask
-        test_mask = torch.tensor(settype == 3) if reverse is True else test_edge_mask
-        ntype = torch.zeros(num_nodes, dtype = torch.int64)
+        train_mask = train_edge_mask
+        valid_mask = valid_edge_mask
+        test_mask = test_edge_mask
+        ntype = torch.zeros(num_nodes, dtype=torch.int64)
 
         return g, (etype, ntype, train_edge_mask, valid_edge_mask, test_edge_mask, train_mask, valid_mask, test_mask)
 
@@ -265,7 +280,6 @@ class WN18RRDataset(DGLDataset):
         Passed.
         """
         pass
-            
 
     def load(self):
         """

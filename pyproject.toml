@@ -13,6 +13,7 @@ wandb = "0.12.*"
 sparse = "0.13.*"
 omegaconf = "2.1.*"
 pandas = "1.4.*"
+sklearn = "^0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "6.2.*"
