@@ -13,7 +13,7 @@ alpha: 0.0001
 pan_mode: "DIST"
 margin: 1.0
 
-dataset: "WN18RR"
+dataset: "Polypharmacy"
 model: "complex"
 batch_size: 16
 embedding_dim: 100
@@ -25,3 +25,6 @@ eval_metric_key: "mrr_filtered"
 eval_every_epoch: True
 
 patience: 7
+
+criterion: "${nested_yaml:unbiased-pu-loss.yaml}"
+
