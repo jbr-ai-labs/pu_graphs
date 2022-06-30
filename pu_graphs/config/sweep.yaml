@@ -1,8 +1,8 @@
 project: pu_graphs
 entity: hse-jbr-ai
-name: pan-WN18RR-dist-loss
+name: polypharmacy-dist-loss
 
-program: main_pan.py
+program: main.py
 
 metric:
   name: mrr_filtered_epoch/test
@@ -11,7 +11,7 @@ metric:
 method: grid
 parameters:
   dataset:
-    value: "WN18RR"
+    value: "Polypharmacy"
   model:
     value: "complex"
   max_norm:
